@@ -3,7 +3,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import 'database/db_helper.dart'; // Pastikan ini diimport untuk memanggil getLocations()
+import '../databases/db_helper.dart'; // Pastikan ini diimport untuk memanggil getLocations()
 
 class PeriksaLokasi extends StatefulWidget {
   final int idSuratTugas; // ⬅️ tambahkan ini

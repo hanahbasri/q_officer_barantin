@@ -3,7 +3,7 @@ import 'dart:io';
 import 'st_selesai.dart';
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'database/db_helper.dart';
+import '../databases/db_helper.dart';
 import 'form_periksa.dart';
 import 'additional/tanggal.dart';
 
@@ -34,7 +34,6 @@ class _DetailLaporanState extends State<DetailLaporan> {
   late StreamSubscription<ConnectivityResult> _subscription;
   bool _isOffline = false;
   bool _showConnectionMessage = false;
-  bool _justReconnected = false;
 
   PageController? _pageController;
   Timer? _pageTimer;
@@ -64,7 +63,6 @@ class _DetailLaporanState extends State<DetailLaporan> {
       if (_isOffline && !nowOffline) {
         // Baru saja reconnect
         setState(() {
-          _justReconnected = true;
           _isOffline = false;
           _showConnectionMessage = true;
         });
@@ -72,7 +70,6 @@ class _DetailLaporanState extends State<DetailLaporan> {
       } else if (!_isOffline && nowOffline) {
         setState(() {
           _isOffline = true;
-          _justReconnected = false;
           _showConnectionMessage = true;
         });
         _hideNotificationAfterDelay();

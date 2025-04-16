@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:q_officer_barantin/surat_tugas/additional/tanggal.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
@@ -202,7 +203,9 @@ class DatabaseHelper {
   Future<void> deleteDatabaseFile() async {
     final path = join(await getDatabasesPath(), 'app_database.db');
     await deleteDatabase(path);
-    print('Database berhasil dihapus');
+    if (kDebugMode) {
+      print('Database berhasil dihapus');
+    }
   }
 
   Future<List<int>> _getAllIdSuratTugas() async {

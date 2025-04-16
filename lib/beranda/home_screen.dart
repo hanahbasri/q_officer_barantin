@@ -118,7 +118,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     _buildMenuCard(
                       icon: 'images/pk_icon.png',
                       title: 'Pemeriksaan\nLapangan',
-                      onTap: () => Navigator.of(context).pushNamed('/field-inspection'),
+                        onTap: () {
+                          Navigator.pushNamed(context, '/surat-tugas');
+                        }
                     ),
                     _buildMenuCard(
                       icon: 'images/plus_icon.png',
