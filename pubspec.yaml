@@ -11,10 +11,9 @@ dependencies:
   flutter:
     sdk: flutter
   firebase_core: ^2.25.4
-  firebase_messaging: ^14.7.17
-  flutter_local_notifications: ^17.0.0
-  cupertino_icons: ^1.0.8
+  firebase_messaging: ^14.7.10
   firebase_auth: ^4.15.3
+  cloud_firestore: ^4.15.0
   http: ^1.1.0
   flutter_secure_storage: ^9.0.0
   intl_phone_field: ^3.2.0
@@ -27,18 +26,47 @@ dependencies:
   shimmer: ^3.0.0
   path: ^1.9.0
   path_provider: ^2.1.2
+  google_maps_flutter: ^2.5.0
+  geolocator: ^12.0.0
+  intl: ^0.20.2
+  dropdown_search: ^6.0.2
+  geocoding: ^3.0.0
+  latlong2: ^0.9.0
+  url_launcher: ^6.1.14
+  dio: ^5.4.0
+  connectivity_plus: ^5.0.2
+  flutter_local_notifications: ^17.0.0
 
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.1
+  flutter_lints: ^5.0.0
 
 flutter:
   uses-material-design: true
 
   assets:
+    - fonts/Inter-Bold.otf
+    - fonts/Inter-Regular.otf
+    - fonts/Inter-Medium.otf
+    - fonts/Inter-SemiBold.otf
+    - fonts/Inter-BoldItalic.otf
+    - fonts/Inter-SemiBoldItalic.otf
+    - fonts/Inter-MediumItalic.otf
     - images/logo_barantin.png
     - images/best_trust.png
     - images/plus_icon.png
     - images/pk_icon.png
+    - images/not found.png
+
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: fonts/Inter-Bold.otf
+        - asset: fonts/Inter-Regular.otf
+        - asset: fonts/Inter-Medium.otf
+        - asset: fonts/Inter-SemiBold.otf
+        - asset: fonts/Inter-BoldItalic.otf
+        - asset: fonts/Inter-SemiBoldItalic.otf
+        - asset: fonts/Inter-MediumItalic.otf
