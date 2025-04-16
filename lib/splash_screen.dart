@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -12,6 +14,8 @@ class SplashScreen extends StatefulWidget {
 }
 
 class SplashScreenState extends State<SplashScreen> {
+  bool _navigated = false;
+
   @override
   void initState() {
     super.initState();
@@ -19,6 +23,9 @@ class SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _startSplashSequence() async {
+    if (_navigated) return;
+    _navigated = true;
+
     if (kDebugMode) {
       print('[SplashScreen] Memulai splash screen...');
     }
@@ -42,6 +49,11 @@ class SplashScreenState extends State<SplashScreen> {
         context,
         isLoggedIn ? '/home' : '/login',
       );
+    } on SocketException catch (_) {
+      if (kDebugMode) print('[SplashScreen] Tidak ada koneksi internet.');
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/login');
+      }
     } catch (e) {
       if (kDebugMode) {
         print('[SplashScreen] Terjadi kesalahan: $e');
@@ -56,7 +68,7 @@ class SplashScreenState extends State<SplashScreen> {
     return Stack(
       alignment: Alignment.center,
       children: [
-        // Actual image
+        // Logo utama
         Image.asset(
           'images/logo_barantin.png',
           width: 216,
@@ -78,7 +90,7 @@ class SplashScreenState extends State<SplashScreen> {
           },
         ),
 
-        // Shimmer overlay
+        // Efek shimmer
         Shimmer.fromColors(
           baseColor: Colors.transparent,
           highlightColor: Colors.white.withOpacity(0.3),
@@ -97,11 +109,13 @@ class SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final double bottomSpacing = MediaQuery.of(context).size.height * 0.07;
+
     return Scaffold(
       body: Stack(
-        fit: StackFit.expand, // Ensures stack fills the entire screen
+        fit: StackFit.expand,
         children: [
-          // Background Gradient
+          // Background gradasi
           Container(
             width: double.infinity,
             height: double.infinity,
@@ -114,7 +128,7 @@ class SplashScreenState extends State<SplashScreen> {
             ),
           ),
 
-          // Logo + Title
+          // Logo & judul
           Align(
             alignment: Alignment.center,
             child: Column(
@@ -139,7 +153,7 @@ class SplashScreenState extends State<SplashScreen> {
 
           // Powered by Best Trust
           Positioned(
-            bottom: 80,
+            bottom: bottomSpacing,
             left: 0,
             right: 0,
             child: Column(

@@ -36,6 +36,7 @@ dependencies:
   dio: ^5.4.0
   connectivity_plus: ^5.0.2
   flutter_local_notifications: ^17.0.0
+  custom_info_window: ^1.0.1
 
 
 dev_dependencies:
@@ -47,26 +48,21 @@ flutter:
   uses-material-design: true
 
   assets:
-    - fonts/Inter-Bold.otf
-    - fonts/Inter-Regular.otf
-    - fonts/Inter-Medium.otf
-    - fonts/Inter-SemiBold.otf
-    - fonts/Inter-BoldItalic.otf
-    - fonts/Inter-SemiBoldItalic.otf
-    - fonts/Inter-MediumItalic.otf
     - images/logo_barantin.png
     - images/best_trust.png
     - images/plus_icon.png
     - images/pk_icon.png
-    - images/not found.png
+    - images/not_found.png
 
-  fonts:
-    - family: Inter
-      fonts:
-        - asset: fonts/Inter-Bold.otf
-        - asset: fonts/Inter-Regular.otf
-        - asset: fonts/Inter-Medium.otf
-        - asset: fonts/Inter-SemiBold.otf
-        - asset: fonts/Inter-BoldItalic.otf
-        - asset: fonts/Inter-SemiBoldItalic.otf
-        - asset: fonts/Inter-MediumItalic.otf
+fonts:
+  - family: Inter
+    fonts:
+      - asset: fonts/Inter_18pt-Regular.ttf
+      - asset: fonts/Inter_18pt-Bold.ttf
+        weight: 700
+      - asset: fonts/Inter_24pt-Regular.ttf
+      - asset: fonts/Inter_24pt-Bold.ttf
+        weight: 700
+      - asset: fonts/Inter_28pt-Regular.ttf
+      - asset: fonts/Inter_28pt-Bold.ttf
+        weight: 700

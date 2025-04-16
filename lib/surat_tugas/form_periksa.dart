@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:dropdown_search/dropdown_search.dart';
 import 'package:path/path.dart';
-import 'database/db_helper.dart';
+import '../databases/db_helper.dart';
 import 'detail_laporan.dart';
 
 class FormPeriksa extends StatefulWidget {
@@ -35,7 +35,7 @@ class _FormPeriksaState extends State<FormPeriksa> {
 
 
   Future<void> pickImages(BuildContext context, ImageSource source, {bool isMulti = false}) async {
-    const maxTotalSizeInBytes = 10 * 1024 * 1024; // 10MB
+    const maxTotalSizeInBytes = 2 * 1024 * 1024; // 2MB
     List<XFile> tempImages = [];
 
     if (isMulti) {
@@ -46,7 +46,7 @@ class _FormPeriksaState extends State<FormPeriksa> {
         return;
       }
     } else {
-      final XFile? singleImage = await _picker.pickImage(source: source);
+      final XFile? singleImage = await _picker.pickImage(source: source, imageQuality: 15);
       if (singleImage != null) {
         tempImages = [...?_images, singleImage];
       } else {
@@ -64,7 +64,7 @@ class _FormPeriksaState extends State<FormPeriksa> {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Total ukuran gambar melebihi 10MB'),
+          content: Text('Total ukuran gambar melebihi 2MB'),
         ),
       );
       return;

@@ -2,9 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:q_officer_barantin/role_detail.dart';
 import 'dart:io';
+import 'package:q_officer_barantin/role_detail.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+
+/// 🔐 Konstanta key untuk secure storage
+class AuthKeys {
+  static const authToken = "auth_token";
+  static const uid = "uid";
+  static const username = "username";
+  static const userId = "user_id";
+  static const fullName = "full_name";
+  static const email = "email";
+  static const userRoles = "user_roles";
+  static const userPhotoPath = "user_photo_path";
+}
 
 class AuthProvider with ChangeNotifier {
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
@@ -23,34 +35,36 @@ class AuthProvider with ChangeNotifier {
 
   bool get isLoggedIn => _isLoggedIn;
 
-  /// ✅ Load data login dari secure storage
+  /// ✅ Cek status login dari local storage
   Future<void> checkLoginStatus() async {
     try {
-      final token = await _secureStorage.read(key: "auth_token");
+      final token = await _secureStorage.read(key: AuthKeys.authToken);
       _isLoggedIn = token != null;
 
       if (_isLoggedIn) {
-        userName = await _secureStorage.read(key: "username") ?? "Guest";
-        userId = await _secureStorage.read(key: "user_id") ?? "";
-        userFullName = await _secureStorage.read(key: "full_name") ?? "";
-        userEmail = await _secureStorage.read(key: "email") ?? "";
         accessToken = token;
-        uid = await _secureStorage.read(key: "uid") ?? "";
+        uid = await _secureStorage.read(key: AuthKeys.uid);
+        userName = await _secureStorage.read(key: AuthKeys.username) ?? "Guest";
+        userId = await _secureStorage.read(key: AuthKeys.userId) ?? "";
+        userFullName = await _secureStorage.read(key: AuthKeys.fullName) ?? "";
+        userEmail = await _secureStorage.read(key: AuthKeys.email) ?? "";
 
-        final detilJson = await _secureStorage.read(key: "user_roles");
+        final detilJson = await _secureStorage.read(key: AuthKeys.userRoles);
         if (detilJson != null) {
           try {
-            final decoded = jsonDecode(detilJson) as List;
-            userRoles = decoded
-                .map((e) => RoleDetail.fromJson(e as Map<String, dynamic>))
-                .toList();
+            final decoded = jsonDecode(detilJson);
+            if (decoded is List) {
+              userRoles = decoded
+                  .map((e) => RoleDetail.fromJson(e as Map<String, dynamic>))
+                  .toList();
+            }
           } catch (e) {
             debugPrint("❌ Gagal decode role: $e");
             userRoles = [];
           }
         }
 
-        _userPhotoPath = await _secureStorage.read(key: "user_photo_path");
+        _userPhotoPath = await _secureStorage.read(key: AuthKeys.userPhotoPath);
       }
 
       notifyListeners();
@@ -59,7 +73,7 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  /// ✅ Login user & simpan semua info termasuk foto lokal & FCM
+  /// ✅ Login user & simpan data ke local
   Future<bool> login(String username, String password) async {
     try {
       final response = await http.post(
@@ -79,24 +93,26 @@ class AuthProvider with ChangeNotifier {
           userFullName = userData["nama"];
           userId = userData["nip"];
           userEmail = userData["email"];
-          final detilList = userData["detil"] ?? [];
+          final detilList = userData["detil"];
 
-          userRoles = (detilList as List)
-              .map((e) => RoleDetail.fromJson(e as Map<String, dynamic>))
-              .toList();
+          if (detilList is List) {
+            userRoles = detilList
+                .map((e) => RoleDetail.fromJson(e as Map<String, dynamic>))
+                .toList();
+          }
 
-          await _secureStorage.write(key: "auth_token", value: accessToken);
-          await _secureStorage.write(key: "uid", value: uid);
-          await _secureStorage.write(key: "username", value: userName);
-          await _secureStorage.write(key: "user_id", value: userId);
-          await _secureStorage.write(key: "full_name", value: userFullName);
-          await _secureStorage.write(key: "email", value: userEmail);
+          // Simpan semua data
+          await _secureStorage.write(key: AuthKeys.authToken, value: accessToken);
+          await _secureStorage.write(key: AuthKeys.uid, value: uid);
+          await _secureStorage.write(key: AuthKeys.username, value: userName);
+          await _secureStorage.write(key: AuthKeys.userId, value: userId);
+          await _secureStorage.write(key: AuthKeys.fullName, value: userFullName);
+          await _secureStorage.write(key: AuthKeys.email, value: userEmail);
           await _secureStorage.write(
-              key: "user_roles", value: jsonEncode(detilList));
+              key: AuthKeys.userRoles, value: jsonEncode(detilList));
 
-          _userPhotoPath = await _secureStorage.read(key: "user_photo_path");
+          _userPhotoPath = await _secureStorage.read(key: AuthKeys.userPhotoPath);
 
-          /// ✅ Tambahkan FCM Token
           await _sendFcmTokenToServer();
 
           _isLoggedIn = true;
@@ -104,6 +120,10 @@ class AuthProvider with ChangeNotifier {
           return true;
         }
       }
+
+      return false;
+    } on SocketException {
+      debugPrint("⚠️ Tidak ada koneksi internet saat login.");
       return false;
     } catch (e) {
       debugPrint("❌ Login error: $e");
@@ -111,14 +131,13 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  /// ✅ Kirim FCM token ke backend (jika dibutuhkan)
+  /// ✅ Kirim token FCM ke server
   Future<void> _sendFcmTokenToServer() async {
     try {
       final fcmToken = await FirebaseMessaging.instance.getToken();
       if (fcmToken != null && accessToken != null) {
         debugPrint("📲 FCM Token: $fcmToken");
 
-        // TODO: Ganti URL & format body sesuai backend kamu
         final response = await http.post(
           Uri.parse("https://api.karantinaindonesia.go.id/ums/save-fcm-token"),
           headers: {
@@ -138,7 +157,7 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  /// ✅ Logout tetap jaga foto user
+  /// ✅ Logout dan tetap simpan foto user
   Future<void> logout() async {
     try {
       final lastPhoto = _userPhotoPath;
@@ -154,7 +173,7 @@ class AuthProvider with ChangeNotifier {
       userRoles = [];
 
       if (lastPhoto != null) {
-        await _secureStorage.write(key: "user_photo_path", value: lastPhoto);
+        await _secureStorage.write(key: AuthKeys.userPhotoPath, value: lastPhoto);
         _userPhotoPath = lastPhoto;
       } else {
         _userPhotoPath = null;
@@ -166,25 +185,28 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  /// ✅ Load path foto user
   Future<void> loadPhotoFromDB() async {
     try {
-      _userPhotoPath = await _secureStorage.read(key: "user_photo_path");
+      _userPhotoPath = await _secureStorage.read(key: AuthKeys.userPhotoPath);
       notifyListeners();
     } catch (e) {
       debugPrint("❌ Gagal load foto: $e");
     }
   }
 
+  /// ✅ Simpan path foto user
   Future<void> savePhotoToDB(String path) async {
     if (path.isNotEmpty && File(path).existsSync()) {
-      await _secureStorage.write(key: "user_photo_path", value: path);
+      await _secureStorage.write(key: AuthKeys.userPhotoPath, value: path);
       _userPhotoPath = path;
     } else {
-      await _secureStorage.delete(key: "user_photo_path");
+      await _secureStorage.delete(key: AuthKeys.userPhotoPath);
       _userPhotoPath = null;
     }
     notifyListeners();
   }
 
+  /// ✅ Ambil list nama role
   List<String> getRoleNames() => userRoles.map((e) => e.roleName).toList();
 }

@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'st_aktif.dart';
 import 'st_tertunda.dart';
 import 'st_selesai.dart';
-import 'database/db_helper.dart';
+import '../databases/db_helper.dart';
 import 'detail_laporan.dart';
 
 class SuratTugasPage extends StatefulWidget {
+  const SuratTugasPage({super.key});
+
   @override
   _SuratTugasPageState createState() => _SuratTugasPageState();
 }
@@ -203,7 +205,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    Image.asset('images/not found.png', height: 100, width: 100),
+                    Image.asset('images/not_found.png', height: 100, width: 100),
                     const SizedBox(height: 10),
                     const Text(
                       "Tidak ada surat tugas aktif saat ini",
@@ -224,7 +226,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                     padding: const EdgeInsets.all(16.0),
                     child: Column(
                       children: [
-                        Image.asset('images/not found.png', height: 100, width: 100),
+                        Image.asset('images/not_found.png', height: 100, width: 100),
                         const SizedBox(height: 10),
                         const Text("Tidak ada surat tugas tertunda saat ini",
                           style: TextStyle(fontSize: 16, color: Colors.grey),
@@ -310,7 +312,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    Image.asset('images/not found.png', height: 100, width: 100),
+                    Image.asset('images/not_found.png', height: 100, width: 100),
                     const SizedBox(height: 10),
                     const Text("Tidak ada surat tugas selesai saat ini",
                       style: TextStyle(fontSize: 16, color: Colors.grey),

@@ -1,8 +1,33 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"> <!-- Tambahkan namespace tools di sini -->
+
+    <!-- Permissions -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
     <application
         android:label="q_officer_barantin"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+
+        <!-- Default icon untuk notifikasi -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/logo_barantin" />
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyBXR4dJ5G4rxG3wt_DfRpQmbNtD03YBD60" />
+        <!--
+        ✅ Perbaikan konflik android:exported -->
+        <service
+            android:name="com.google.firebase.messaging.FirebaseMessagingService"
+            android:exported="true"
+            tools:replace="android:exported">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT"/>
+            </intent-filter>
+        </service>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -28,6 +53,7 @@
             android:value="2" />
     </application>
 
+    <!-- Allow external apps to send text -->
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
