@@ -2,18 +2,24 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:dropdown_search/dropdown_search.dart';
-import 'package:path/path.dart';
 import '../databases/db_helper.dart';
 import 'detail_laporan.dart';
+import 'package:uuid/uuid.dart';
+import 'dart:typed_data';
+import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:q_officer_barantin/models/st_lengkap.dart';
+import 'dart:convert';
+import 'package:q_officer_barantin/models/hasil_pemeriksaan.dart';
 
 class FormPeriksa extends StatefulWidget {
-  final int? idSuratTugas;
-  final Map<String, dynamic> suratTugas;
+  final StLengkap suratTugas;
+  final String idSuratTugas;
   final VoidCallback onSelesaiTugas;
 
   const FormPeriksa({
     Key? key,
-    this.idSuratTugas,
+    required this.idSuratTugas,
     required this.suratTugas,
     required this.onSelesaiTugas,
   }) : super(key: key);
@@ -24,55 +30,176 @@ class FormPeriksa extends StatefulWidget {
 
 class _FormPeriksaState extends State<FormPeriksa> {
   final _formKey = GlobalKey<FormState>();
+  final uuid = Uuid();
+  late String idPemeriksaan;
+  List<Map<String, dynamic>> lokasiList = [];
+
   String? selectedTarget;
   String? selectedTemuan;
-  String? selectedLokasi;
+  String? selectedLokasiId;
+  String? selectedLokasiName;
+  String? selectedKomoditasId;
+  String? selectedKomoditasName;
+  double? latitude;
+  double? longitude;
+  Position? devicePosition;
+  String? waktuAmbilPosisi;
   String? selectedKomoditas;
-  List<XFile>? _images = [];
+
   final ImagePicker _picker = ImagePicker();
   final TextEditingController _metodeController = TextEditingController();
   final TextEditingController _catatanController = TextEditingController();
 
+  @override
+  void initState() {
+    super.initState();
+    idPemeriksaan = uuid.v4();
+    ambilPosisiAwal();
+  }
+
+  Future<bool> requestPermission() async {
+    final status = await Permission.location.request();
+    return status.isGranted;
+  }
+
+
+  Future<void> ambilPosisiAwal() async {
+    final granted = await requestPermission();
+    if (!granted) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Izin lokasi diperlukan untuk mengambil posisi")),
+      );
+      return;
+    }
+
+    try {
+      final db = DatabaseHelper();
+      final posisi = await db.getLocation();
+      if (posisi != null) {
+        setState(() {
+          devicePosition = posisi;
+          latitude = posisi.latitude;
+          longitude = posisi.longitude;
+          waktuAmbilPosisi = DateTime.now().toIso8601String();
+        });
+
+        if (!mounted) return;
+        print("Lokasi berhasil: lat=$latitude, long=$longitude");
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("❗ Gagal mengambil lokasi")),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e")),
+      );
+    }
+  }
 
   Future<void> pickImages(BuildContext context, ImageSource source, {bool isMulti = false}) async {
-    const maxTotalSizeInBytes = 2 * 1024 * 1024; // 2MB
+    const maxTotalSizeInBytes = 2 * 1024 * 1024;
     List<XFile> tempImages = [];
 
     if (isMulti) {
       final List<XFile>? selectedImages = await _picker.pickMultiImage();
       if (selectedImages != null && selectedImages.isNotEmpty) {
-        tempImages = [...?_images, ...selectedImages];
+        tempImages = selectedImages;
       } else {
         return;
       }
     } else {
       final XFile? singleImage = await _picker.pickImage(source: source, imageQuality: 15);
       if (singleImage != null) {
-        tempImages = [...?_images, singleImage];
+        tempImages = [singleImage];
       } else {
         return;
       }
     }
 
     int totalSize = 0;
+
     for (var image in tempImages) {
       final file = File(image.path);
-      totalSize += await file.length();
+      final bytes = await file.readAsBytes();
+
+      totalSize += bytes.length;
+
+      if (totalSize > maxTotalSizeInBytes) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Total ukuran gambar melebihi 2MB')),
+        );
+        return;
+      }
+
+      await DatabaseHelper().getImagetoDatabase(bytes, idPemeriksaan);
     }
 
-    if (totalSize > maxTotalSizeInBytes) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Total ukuran gambar melebihi 2MB'),
+    setState(() {});
+  }
+
+  void _handleSubmit(BuildContext context) async {
+    if (_formKey.currentState!.validate() &&
+        selectedLokasiId != null &&
+        selectedTarget != null &&
+        selectedTemuan != null &&
+        selectedKomoditasId != null) {
+
+      final hasil = HasilPemeriksaan(
+        idPemeriksaan: idPemeriksaan,
+        idSuratTugas: widget.idSuratTugas,
+        idKomoditas: selectedKomoditasId!,
+        namaKomoditas: selectedKomoditasName!,
+        idLokasi: selectedLokasiId!,
+        namaLokasi: selectedLokasiName!,
+        lat: latitude?.toString() ?? '',
+        long: longitude?.toString() ?? '',
+        target: selectedTarget!,
+        metode: _metodeController.text,
+        temuan: selectedTemuan!,
+        catatan: _catatanController.text,
+        tanggal: waktuAmbilPosisi ?? DateTime.now().toIso8601String(),
+      );
+
+      await DatabaseHelper().insertHasilPemeriksaan(hasil);
+
+      _formKey.currentState!.reset();
+      _metodeController.clear();
+      _catatanController.clear();
+
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text("Berhasil Dikirim"),
+          content: const Text("Hasil pemeriksaan berhasil dikirim!"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text("OK"),
+            ),
+          ],
         ),
       );
-      return;
-    }
 
-    setState(() {
-      _images = tempImages;
-    });
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DetailLaporan(
+            idSuratTugas: widget.suratTugas.idSuratTugas,
+            suratTugas: widget.suratTugas,
+            onSelesaiTugas: widget.onSelesaiTugas,
+          ),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Harap lengkapi seluruh isian")),
+      );
+    }
   }
 
   void _showImagePicker(BuildContext context) {
@@ -123,161 +250,68 @@ class _FormPeriksaState extends State<FormPeriksa> {
     );
   }
 
-  Future<void> _showSuccessPopup(BuildContext context) {
-    return showDialog(
-      context: context,
-      builder: (BuildContext ctx) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          backgroundColor: Color(0xFFFBF2F2),
-          contentPadding: EdgeInsets.all(20),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.check_circle, size: 60, color: Color(0xFF522E2E)),
-              SizedBox(height: 10),
-              Text(
-                "Berhasil Dikirim",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF522E2E)),
-              ),
-              SizedBox(height: 8),
-              Text(
-                "Hasil pemeriksaan kesehatan telah berhasil dikirim!",
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400),
-              ),
-              SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DetailLaporan(
-                          idSuratTugas: widget.idSuratTugas ?? widget.suratTugas['id_surat_tugas'] as int,
-                          suratTugas: widget.suratTugas,
-                          onSelesaiTugas: widget.onSelesaiTugas,
-                        ),
-                      ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF522E2E),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                    padding: const EdgeInsets.symmetric(vertical: 12), // hilangkan horizontal biar responsif
-                  ),
-                  child: const Text("Periksa Hasil", style: TextStyle(color: Colors.white)),
-                ),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => FormPeriksa(
-                          idSuratTugas: widget.idSuratTugas,
-                          suratTugas: widget.suratTugas,
-                          onSelesaiTugas: widget.onSelesaiTugas,
-                        ),
-                      ),
-                    );
-                  },
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFEC559),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                    side: BorderSide.none,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  child: const Text("Isi Form Kembali", style: TextStyle(color: Colors.black)),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _handleSubmit(BuildContext context) async {
-    if (_formKey.currentState!.validate() &&
-        selectedLokasi != null &&
-        selectedTarget != null &&
-        selectedTemuan != null &&
-        selectedKomoditas != null &&
-        _images!.isNotEmpty) {
-
-      final fotoPaths = _images!.map((e) => e.path).toList().join('|');
-      final now = DateTime.now();
-
-      final data = {
-        'id_surat_tugas': widget.idSuratTugas ?? widget.suratTugas['id_surat_tugas'] as int,
-        'lokasi': selectedLokasi!,
-        'target': selectedTarget!,
-        'metode': _metodeController.text,
-        'temuan': selectedTemuan!,
-        'komoditas': selectedKomoditas!,
-        'catatan': _catatanController.text,
-        'fotoPaths': fotoPaths,
-        'tgl_periksa': now.toIso8601String(),
-      };
-
-      await DatabaseHelper().insertPeriksa(data);
-
-      // Reset form dan state setelah berhasil simpan
-      _formKey.currentState!.reset();
-      _metodeController.clear();
-      _catatanController.clear();
-      setState(() {
-        selectedLokasi = null;
-        selectedTarget = null;
-        selectedTemuan = null;
-        selectedKomoditas = null;
-        _images = [];
-      });
-
-      await _showSuccessPopup(context);
-      Navigator.pop(context, true); // << ini penting buat update tombol sebelumnya
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Harap lengkapi seluruh isian laporan pemeriksaan")),
-      );
-    }
-  }
-
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text("Form Pemeriksaan", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Color(0xFF522E2E),
-        foregroundColor: Colors.white,
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
+      appBar: AppBar(title: const Text("Form Pemeriksaan")),
+      body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text("Lokasi", style: TextStyle(fontWeight: FontWeight.bold)),
-              DropdownSearch<String>(
-                items: (filter, _) => ["Jawa Barat", "Gudang B", "Kantor Pusat", "Cabang Jakarta", "Cabang Bandung"],
-                onChanged: (value) => setState(() => selectedLokasi = value),
-                selectedItem: selectedLokasi,
-                validator: (value) => selectedLokasi == null ? "Wajib diisi" : null,
-                decoratorProps: DropDownDecoratorProps(
-                  decoration: InputDecoration(border: OutlineInputBorder()),
+          child: Form(
+            key: _formKey,
+            child: ListView(
+              children: [
+                Text(
+                  "Lokasi",
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-                popupProps: PopupProps.menu(showSearchBox: true),
-              ),
-              SizedBox(height: 16),
+                FutureBuilder<List<Map<String, dynamic>>>(
+                  future: DatabaseHelper().getLokasiById(widget.idSuratTugas),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return CircularProgressIndicator();
+                    }
 
+                    if (snapshot.hasError) {
+                      return Text('Error: ${snapshot.error}');
+                    }
+
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      return Text('Tidak ada lokasi tersedia');
+                    }
+
+                    List<Map<String, dynamic>> lokasiList = snapshot.data!;
+                    return DropdownButtonFormField<String>(
+                      value: selectedLokasiName,
+                      onChanged: (String? newValue) {
+                        if (newValue == null) return;
+                        setState(() {
+                          selectedLokasiName = newValue;
+                          final selected = lokasiList.firstWhere(
+                                (lok) => lok['nama_lokasi'] == newValue,
+                            orElse: () => {'id_lokasi': null},
+                          );
+                          selectedLokasiId = selected['id_lokasi']?.toString() ?? '';
+                        });
+                      },
+                      items: lokasiList
+                          .where((lok) => lok['nama_lokasi'] != null)
+                          .map<DropdownMenuItem<String>>((lokasi) {
+                        final namaLokasi = lokasi['nama_lokasi'] ?? 'Tidak diketahui';
+                        return DropdownMenuItem<String>(
+                          value: namaLokasi,
+                          child: Text(namaLokasi),
+                        );
+                      }).toList(),
+                      decoration: const InputDecoration(
+                        hintText: 'Pilih Lokasi',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) => value == null || value.isEmpty ? "Wajib pilih lokasi" : null,
+                    );
+                  },
+                ),
+
+              SizedBox(height: 16),
               Text("Target / Sasaran", style: TextStyle(fontWeight: FontWeight.bold)),
               DropdownSearch<String>(
                 items: (filter, _) => ["Gudang A", "Gudang B", "Kantor Pusat", "Cabang Jakarta", "Cabang Bandung"],
@@ -312,17 +346,57 @@ class _FormPeriksaState extends State<FormPeriksa> {
               ),
               SizedBox(height: 16),
 
-              Text("Komoditas", style: TextStyle(fontWeight: FontWeight.bold)),
-              DropdownSearch<String>(
-                items: (filter, _) => ["Hewan", "Ikan", "Tumbuhan"],
-                onChanged: (value) => setState(() => selectedKomoditas = value),
-                selectedItem: selectedKomoditas,
-                validator: (value) => selectedKomoditas == null ? "Wajib diisi" : null,
-                decoratorProps: DropDownDecoratorProps(
-                  decoration: InputDecoration(border: OutlineInputBorder()),
+                Text(
+                  "Komoditas",
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-                popupProps: PopupProps.menu(showSearchBox: true),
-              ),
+                FutureBuilder<List<Map<String, dynamic>>>(
+                  future: DatabaseHelper().getKomoditasById(widget.idSuratTugas),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return CircularProgressIndicator();
+                    }
+
+                    if (snapshot.hasError) {
+                      return Text('Error: ${snapshot.error}');
+                    }
+
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      return Text('Tidak ada komoditas tersedia');
+                    }
+
+                    List<Map<String, dynamic>> komoditasList = snapshot.data!;
+                    return DropdownButtonFormField<String>(
+                      value: selectedKomoditasName,
+                      onChanged: (String? newValue) {
+                        if (newValue == null) return;
+                        setState(() {
+                          selectedKomoditasName = newValue;
+                          final selected = komoditasList.firstWhere(
+                                (kom) => kom['nama_komoditas'] == newValue,
+                            orElse: () => {'id_komoditas': null},
+                          );
+                          selectedKomoditasId = selected['id_komoditas']?.toString() ?? '';
+                        });
+                      },
+                      items: komoditasList
+                          .where((kom) => kom['nama_komoditas'] != null)
+                          .map<DropdownMenuItem<String>>((komoditas) {
+                        final namaKomoditas = komoditas['nama_komoditas'] ?? 'Tidak diketahui';
+                        return DropdownMenuItem<String>(
+                          value: namaKomoditas,
+                          child: Text(namaKomoditas),
+                        );
+                      }).toList(),
+                      decoration: const InputDecoration(
+                        hintText: 'Pilih Komoditas',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) => value == null || value.isEmpty ? "Wajib diisi" : null,
+                    );
+                  },
+                ),
+
               SizedBox(height: 16),
 
               Text("Catatan", style: TextStyle(fontWeight: FontWeight.bold)),
@@ -330,70 +404,53 @@ class _FormPeriksaState extends State<FormPeriksa> {
                 controller: _catatanController,
                 decoration: InputDecoration(border: OutlineInputBorder()),
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
+              const Text("Dokumentasi"),
+                FutureBuilder<List<Map<String, dynamic>>>(
+                  future: DatabaseHelper().getImageFromDatabase(idPemeriksaan),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      return const Text("Belum ada foto");
+                    }
+                    final fotoList = snapshot.data!;
 
-              Text("Dokumentasi", style: TextStyle(fontWeight: FontWeight.bold)),
-              _images!.isNotEmpty
-                  ? SizedBox(
-                height: 200,
-                child: PageView.builder(
-                  itemCount: _images!.length,
-                  controller: PageController(viewportFraction: 0.9),
-                  itemBuilder: (context, index) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 5),
-                      child: GestureDetector(
-                        onTap: () {
-                          showDialog(
-                            context: context,
-                            builder: (_) => Dialog(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Image.file(File(_images![index].path)),
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    child: Text('Tutup'),
-                                  ),
-                                ],
+                    return SizedBox(
+                      height: 150,
+                      child: PageView.builder(
+                        itemCount: fotoList.length,
+                        controller: PageController(viewportFraction: 0.8),
+                        itemBuilder: (context, index) {
+                          final base64Str = fotoList[index]['foto'] as String;
+                          print("Base64 foto [$index]: ${base64Str.substring(0, 30)}...");
+                          final bytes = base64Decode(base64Str);
+                          return GestureDetector(
+                            onTap: () => showImagePreview(context, bytes),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.memory(bytes, fit: BoxFit.cover),
                               ),
                             ),
                           );
                         },
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: Image.file(
-                            File(_images![index].path),
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                          ),
-                        ),
                       ),
                     );
                   },
                 ),
-              )
-                  : Text("Belum ada foto", style: TextStyle(color: Colors.red)),
-
-              ElevatedButton.icon(
-                onPressed: () => _showImagePicker(context),
+                ElevatedButton.icon(
                 icon: Icon(Icons.upload),
-                label: Text("Upload Foto"),
-              ),
-              SizedBox(height: 5),
-              Text("Format .JPG, .PNG, .JPEG", style: TextStyle(fontSize: 12, color: Colors.red)),
-              SizedBox(height: 20),
-
-              Center(
-                child: ElevatedButton(
-                  onPressed: () => _handleSubmit(context),
-                  style: ElevatedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                    backgroundColor: Color(0xFF522E2E),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(5))),
-                  ),
-                  child: Text("Kirim", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.white)),
+                label: const Text("Upload Foto"),
+                onPressed: () => _showImagePicker(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.brown,
+                  foregroundColor: Colors.white,
                 ),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => _handleSubmit(context),
+                child: const Text("Kirim"),
               ),
             ],
           ),
@@ -423,6 +480,22 @@ Widget _buildImageSourceOption({
         const SizedBox(height: 8),
         Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
       ],
+    ),
+  );
+}
+
+void showImagePreview(BuildContext context, Uint8List imageBytes) {
+  showDialog(
+    context: context,
+    builder: (_) => Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(16),
+      child: InteractiveViewer(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Image.memory(imageBytes),
+        ),
+      ),
     ),
   );
 }

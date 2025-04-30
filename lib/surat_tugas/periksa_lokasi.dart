@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
-import '../databases/db_helper.dart'; // Pastikan ini diimport untuk memanggil getLocations()
+import '../databases/db_helper.dart';
 
 class PeriksaLokasi extends StatefulWidget {
-  final int idSuratTugas; // ⬅️ tambahkan ini
+  final String idSuratTugas;
 
   const PeriksaLokasi({Key? key, required this.idSuratTugas}) : super(key: key);
 
@@ -27,10 +26,8 @@ class _PeriksaLokasiState extends State<PeriksaLokasi> {
     _fetchLocationsFromDb();
   }
 
-  // Ambil lokasi menggunakan method getLocations() dari DatabaseHelper
   Future<void> _fetchLocationsFromDb() async {
-    // Mendapatkan daftar lokasi dari DatabaseHelper
-    final locations = await DatabaseHelper().getLocationsBySuratTugas(widget.idSuratTugas);
+    final locations = await DatabaseHelper().getLokasiById(widget.idSuratTugas);
 
     List<LatLng> positions = [];
 
@@ -50,7 +47,7 @@ class _PeriksaLokasiState extends State<PeriksaLokasi> {
 
         _markers.add(
           Marker(
-            markerId: MarkerId(row['id'].toString()),
+            markerId: MarkerId(row['id_lokasi'].toString()),
             position: position,
             infoWindow: InfoWindow(
               title: name,
@@ -61,7 +58,6 @@ class _PeriksaLokasiState extends State<PeriksaLokasi> {
         );
       }
 
-      // Menambahkan polyline jika lebih dari satu lokasi
       if (positions.length > 1) {
         _polylines.add(
           Polyline(
@@ -75,7 +71,6 @@ class _PeriksaLokasiState extends State<PeriksaLokasi> {
     });
   }
 
-  // Fungsi untuk membuka Google Maps
   void _openGoogleMaps(LatLng position) async {
     final Uri url = Uri.parse(
         "https://www.google.com/maps/search/?api=1&query=${position.latitude},${position.longitude}");
