@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'st_aktif.dart';
 import 'st_tertunda.dart';
-import 'st_selesai.dart';
 import '../databases/db_helper.dart';
 import 'detail_laporan.dart';
+import 'package:q_officer_barantin/models/st_lengkap.dart';
 
 class SuratTugasPage extends StatefulWidget {
   const SuratTugasPage({super.key});
@@ -14,8 +14,10 @@ class SuratTugasPage extends StatefulWidget {
 
 class _SuratTugasPageState extends State<SuratTugasPage> {
   bool hasActiveTask = false;
-  Map<String, String>? suratTugasAktif;
-  List<Map<String, String>> suratTugasTertunda = [];
+  bool _isLoading = false;
+  StLengkap? suratTugasAktif;
+  List<StLengkap> suratTugasTertunda = [];
+  List<StLengkap> suratTugasSelesai = [];
 
   @override
   void initState() {
@@ -23,46 +25,109 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
     _loadSuratTugas();
   }
 
-  void _loadSuratTugas() async {
-    final db = DatabaseHelper();
-    final data = await db.getData('Surat_Tugas');
-    print("Data surat tugas: $data"); // ← debug log
+  Future<void> _loadSuratTugas() async {
+    try {
+      final db = DatabaseHelper();
+      final data = await db.getData('Surat_Tugas');
 
-    setState(() {
-      suratTugasTertunda = data.map((item) => item.map((key, value) => MapEntry(key, value.toString()))).toList();
-    });
-  }
+      List<StLengkap> tertunda = [];
+      StLengkap? aktif;
+      List<StLengkap> selesai = [];
 
-  List<Map<String, String>> suratTugasSelesai = [];
+      for (var item in data) {
+        final status = item['status'] ?? '';
 
-  void _terimaTugas(Map<String, String> tugas) {
-    setState(() {
-      hasActiveTask = true;
-      suratTugasAktif = tugas;
-      suratTugasTertunda.remove(tugas);
-    });
+        final futures = await Future.wait([
+          db.getPetugasById(item['id_surat_tugas']),
+          db.getLokasiById(item['id_surat_tugas']),
+          db.getKomoditasById(item['id_surat_tugas']),
+        ]);
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => SuratTugasAktifPage(
-          idSuratTugas: int.parse(suratTugasAktif!['id_surat_tugas']!),
-          suratTugas: suratTugasAktif!,
-          onSelesaiTugas: _selesaikanTugas,
-        ),
-      ),
-    );
-  }
+        final tugas = StLengkap.fromMap(
+          item,
+          futures[0] as List<Map<String, dynamic>>,
+          futures[1] as List<Map<String, dynamic>>,
+          futures[2] as List<Map<String, dynamic>>,
+        );
 
-  void _selesaikanTugas() {
-    if (suratTugasAktif != null) {
+        if (status == 'aktif') {
+          aktif = tugas;
+        } else if (status == 'tertunda') {
+          tertunda.add(tugas);
+        } else if (status == 'selesai') {
+          selesai.add(tugas);
+        }
+      }
+
+      if (!mounted) return;
+
       setState(() {
-        hasActiveTask = false;
-        suratTugasSelesai.add(suratTugasAktif!);
+        suratTugasAktif = aktif;
+        hasActiveTask = aktif != null;
+        suratTugasTertunda = tertunda;
+        suratTugasSelesai = selesai;
+      });
+    } catch (e) {
+      print('Error loading surat tugas: $e');
+      if (!mounted) return;
+      setState(() {
         suratTugasAktif = null;
+        hasActiveTask = false;
+        suratTugasTertunda = [];
+        suratTugasSelesai = [];
       });
     }
   }
+
+  Future<void> _terimaTugas(StLengkap tugas) async {
+    setState(() => _isLoading = true); // Mulai loading
+
+    try {
+      final db = DatabaseHelper();
+      await db.updateStatusTugas(tugas.idSuratTugas, 'aktif');
+
+      await _loadSuratTugas(); // Tunggu surat tugas aktif selesai dimuat
+
+      if (suratTugasAktif == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gagal memuat surat tugas aktif')),
+        );
+        return;
+      }
+
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SuratTugasAktifPage(
+            idSuratTugas: suratTugasAktif!.idSuratTugas,
+            suratTugas: suratTugasAktif!,
+            onSelesaiTugas: _selesaikanTugas,
+          ),
+        ),
+      );
+    } catch (e) {
+      print('Error terima tugas: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gagal menerima tugas')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false); // Selesai loading
+      }
+    }
+  }
+
+  void _selesaikanTugas() async {
+    if (suratTugasAktif != null) {
+      final db = DatabaseHelper();
+      await db.updateStatusTugas(suratTugasAktif!.idSuratTugas, 'selesai');
+      _loadSuratTugas();
+    }
+  }
+
 
   Widget _buildRow(String label, String? value) {
     return Padding(
@@ -70,13 +135,12 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Label (rata kiri, tapi pakai lebar tetap biar sejajar)
           SizedBox(
-            width: 130, // lebar tetap supaya ":" sejajar
+            width: 130,
             child: Text(
               label,
               style: const TextStyle(fontWeight: FontWeight.bold),
-              textAlign: TextAlign.left, // ini dia yang kamu mau
+              textAlign: TextAlign.left,
             ),
           ),
           const Text(":", style: TextStyle(fontWeight: FontWeight.bold)),
@@ -126,13 +190,13 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                           children: [
                             Flexible(
                               child: Text(
-                                "${suratTugasAktif?["no_st"] ?? "-"}",
+                                "${suratTugasAktif?.noSt ?? "-"}",
                                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                               ),
                             ),
                             TextButton(
                                 style: TextButton.styleFrom(
-                                  backgroundColor: suratTugasAktif?['status_laporan'] == 'dikirim'
+                                  backgroundColor: suratTugasAktif?.status == 'dikirim'
                                       ? Colors.white
                                       : Color(0xFFD8F3DC),
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -141,14 +205,16 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                                   ),
                                 ),
                                 onPressed: () async {
-                                  if (suratTugasAktif?['status_laporan'] == 'dikirim') {
+                                  if (suratTugasAktif?.status == 'dikirim') {
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
                                         builder: (context) => DetailLaporan(
-                                          idSuratTugas: int.parse(suratTugasAktif!['id_surat_tugas']!),
+                                          idSuratTugas: suratTugasAktif!.idSuratTugas,
                                           suratTugas: suratTugasAktif!,
                                           onSelesaiTugas: _selesaikanTugas,
+                                          isViewOnly: false,
+                                          showDetailHasil: false,
                                         ),
                                       ),
                                     );
@@ -157,7 +223,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                                       context,
                                       MaterialPageRoute(
                                         builder: (context) => SuratTugasAktifPage(
-                                          idSuratTugas: int.parse(suratTugasAktif!['id_surat_tugas']!),
+                                          idSuratTugas: suratTugasAktif!.idSuratTugas,
                                           suratTugas: suratTugasAktif!,
                                           onSelesaiTugas: _selesaikanTugas,
                                         ),
@@ -165,16 +231,16 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                                     );
                                     if (result == true) {
                                       setState(() {
-                                        suratTugasAktif!['status_laporan'] = 'dikirim';
+                                        suratTugasAktif = suratTugasAktif!.copyWith(status: 'dikirim');
                                       });
                                     }
                                   }
                                 },
                               child: Text(
-                                suratTugasAktif?['status_laporan'] == 'dikirim'
+                                suratTugasAktif?.status == 'dikirim'
                                     ? "Lihat Detail"
                                     : "Buat Laporan",
-                                style: TextStyle(color: suratTugasAktif?['status_laporan'] == 'dikirim'
+                                style: TextStyle(color: suratTugasAktif?.status == 'dikirim'
                                     ? Colors.green
                                     : Color(0xFF1B4332)),
                               )
@@ -188,10 +254,15 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _buildRow("Dasar", suratTugasAktif?["dasar"]),
-                            _buildRow("Lokasi", suratTugasAktif?["lok"]),
-                            _buildRow("Tanggal Tugas", suratTugasAktif?["tgl_tugas"]),
-                            _buildRow("Perihal", suratTugasAktif?["hal"]),
+                            _buildRow("Dasar", suratTugasAktif?.dasar),
+                            _buildRow(
+                              "Lokasi",
+                              suratTugasAktif?.lokasi.isNotEmpty == true
+                                  ? suratTugasAktif!.lokasi[0].namaLokasi
+                                  : "-",
+                            ),
+                            _buildRow("Tanggal Tugas", suratTugasAktif?.tanggal),
+                            _buildRow("Perihal", suratTugasAktif?.hal),
                           ],
                         ),
                       ),
@@ -257,7 +328,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                           children: [
                             Flexible(
                               child: Text(
-                                "${tugas["no_st"]}",
+                                "${tugas.noSt}",
                                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                               ),
                             ),
@@ -289,10 +360,13 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _buildRow("Dasar", tugas["dasar"]),
-                            _buildRow("Lokasi", tugas["lok"]),
-                            _buildRow("Tanggal Tugas", tugas["tgl_tugas"]),
-                            _buildRow("Perihal", tugas["hal"]),
+                            _buildRow("Dasar", tugas.dasar),
+                            _buildRow(
+                              "Lokasi",
+                              tugas.lokasi.isNotEmpty ? tugas.lokasi[0].namaLokasi : "-",
+                            ),
+                            _buildRow("Tanggal Tugas", tugas.tanggal),
+                            _buildRow("Perihal", tugas.hal),
                           ],
                         ),
                       ),
@@ -341,7 +415,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                         children: [
                           Flexible(
                             child: Text(
-                              "${tugas["no_st"] ?? "-"}",
+                              "${tugas.noSt ?? "-"}",
                               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                             ),
                           ),
@@ -356,9 +430,9 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) => DetailLaporan(
-                                    idSuratTugas: int.tryParse(tugas['id_surat_tugas'].toString()),
+                                    idSuratTugas: tugas.idSuratTugas, // ✅ gunakan ID dari data
                                     suratTugas: tugas,
-                                    onSelesaiTugas: () {}, // tidak digunakan
+                                    onSelesaiTugas: () {}, // boleh kosong di ST selesai
                                     isViewOnly: true,
                                     showDetailHasil: true,
                                     customTitle: "Surat Tugas Selesai",
@@ -371,7 +445,6 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                         ],
                       ),
                     ),
-                    // BODY
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       decoration: const BoxDecoration(
@@ -381,10 +454,13 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildRow("Dasar", tugas["dasar"]),
-                          _buildRow("Lokasi", tugas["lok"]),
-                          _buildRow("Tanggal Tugas", tugas["tgl_tugas"]),
-                          _buildRow("Perihal", tugas["hal"]),
+                          _buildRow("Dasar", tugas.dasar),
+                          _buildRow(
+                            "Lokasi",
+                            tugas.lokasi.isNotEmpty ? tugas.lokasi[0].namaLokasi : "-",
+                          ),
+                          _buildRow("Tanggal Tugas", tugas.tanggal),
+                          _buildRow("Perihal", tugas.hal),
                         ],
                       ),
                     ),
@@ -392,6 +468,19 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                 ),
               );
             }).toList(),
+          ),
+          Center(
+            child: ElevatedButton(
+              onPressed: () async {
+                await DatabaseHelper().deleteDatabaseFile();
+              },
+              style: ElevatedButton.styleFrom(
+                padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                backgroundColor: Color(0xFF522E2E),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(5))),
+              ),
+              child: Text("Kirim", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.white)),
+            ),
           ),
         ],
       ),

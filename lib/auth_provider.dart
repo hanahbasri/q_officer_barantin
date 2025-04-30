@@ -3,7 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:io';
-import 'package:q_officer_barantin/role_detail.dart';
+import 'package:q_officer_barantin/models/role_detail.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 /// 🔐 Konstanta key untuk secure storage

@@ -5,12 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../databases/db_helper.dart';
 import 'form_periksa.dart';
-import 'additional/tanggal.dart';
+import 'package:uuid/uuid.dart';
+import 'package:q_officer_barantin/models/st_lengkap.dart';
+import 'package:q_officer_barantin/widgets/card_hasil_periksa.dart';
 
 class DetailLaporan extends StatefulWidget {
-  final int? idSuratTugas;
+  final StLengkap suratTugas;
+  final String? idSuratTugas;
   final String? customTitle;
-  final Map<String, dynamic> suratTugas;
   final VoidCallback onSelesaiTugas;
   final bool isViewOnly;
   final bool showDetailHasil;
@@ -34,6 +36,8 @@ class _DetailLaporanState extends State<DetailLaporan> {
   late StreamSubscription<ConnectivityResult> _subscription;
   bool _isOffline = false;
   bool _showConnectionMessage = false;
+  List<Map<String, dynamic>> _hasilList = [];
+  var uuid = Uuid();
 
   PageController? _pageController;
   Timer? _pageTimer;
@@ -57,15 +61,21 @@ class _DetailLaporanState extends State<DetailLaporan> {
   }
 
   void _monitorConnection() {
-    _subscription = Connectivity().onConnectivityChanged.listen((ConnectivityResult result) {
+    _subscription = Connectivity().onConnectivityChanged.listen((ConnectivityResult result) async {
       bool nowOffline = result == ConnectivityResult.none;
 
       if (_isOffline && !nowOffline) {
-        // Baru saja reconnect
         setState(() {
           _isOffline = false;
           _showConnectionMessage = true;
         });
+
+        final ping = await getPingLatency();
+        if (ping < 100) {
+          final db = DatabaseHelper();
+          await db.syncUnsentData();
+        }
+
         _hideNotificationAfterDelay();
       } else if (!_isOffline && nowOffline) {
         setState(() {
@@ -77,26 +87,36 @@ class _DetailLaporanState extends State<DetailLaporan> {
     });
   }
 
-
-  Future<List<Map<String, dynamic>>> getPemeriksaanData() async {
+  Future<Map<String, dynamic>?> getSuratTugasLengkap(String idSuratTugas) async {
     final db = DatabaseHelper();
-    final data = await db.getAllPeriksa();
 
-    final idSurat = widget.idSuratTugas ?? widget.suratTugas['id_surat_tugas'];
-    return data.where((e) => e['id_surat_tugas'] == idSurat).toList();
+    final suratList = await db.getData('Surat_Tugas');
+    final surat = suratList.firstWhere(
+          (e) => e['id_surat_tugas'] == idSuratTugas,
+      orElse: () => {},
+    );
+
+    if (surat.isEmpty) return null;
+
+    final periksaList = await db.getPeriksaById(idSuratTugas);
+    final filteredPeriksa = periksaList.where((e) => e['id_surat_tugas'] == idSuratTugas).toList();
+
+    return {
+      'surat': surat,
+      'pemeriksaan': filteredPeriksa,
+    };
   }
 
-
-  Future<Map<String, dynamic>?> getSuratTugas() async {
-    final db = DatabaseHelper();
-    final all = await db.getData('Surat_Tugas');
-
-    final idSurat = widget.idSuratTugas ?? widget.suratTugas['id_surat_tugas'];
-    final filtered = all.where((e) => e['id_surat_tugas'] == idSurat);
-
-    return filtered.isNotEmpty ? filtered.first : null;
+  Future<int> getPingLatency() async {
+    try {
+      final stopwatch = Stopwatch()..start();
+      final result = await InternetAddress.lookup('google.com');
+      stopwatch.stop();
+      return stopwatch.elapsedMilliseconds;
+    } catch (_) {
+      return 9999;
+    }
   }
-
 
   void _hideNotificationAfterDelay() {
     Future.delayed(Duration(seconds: 3), () {
@@ -105,7 +125,6 @@ class _DetailLaporanState extends State<DetailLaporan> {
       });
     });
   }
-
 
   @override
   void dispose() {
@@ -183,25 +202,26 @@ class _DetailLaporanState extends State<DetailLaporan> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          widget.customTitle ?? "Riwayat Pemeriksaan", // ⬅️ kalau null, fallback ke default
+          widget.customTitle ?? "Riwayat Pemeriksaan",
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: Color(0xFF522E2E),
         foregroundColor: Colors.white,
         centerTitle: true,
       ),
-      body: FutureBuilder(
-        future: Future.wait([
-          getSuratTugas(),
-          getPemeriksaanData(),
-        ]),
+      body: widget.idSuratTugas == null
+          ? Center(child: Text('ID Surat Tugas tidak tersedia'))
+          : FutureBuilder(
+        future: getSuratTugasLengkap(widget.idSuratTugas!),
         builder: (context, snapshot) {
-          if (!snapshot.hasData || snapshot.data![0] == null) {
+          if (!snapshot.hasData || snapshot.data == null) {
             return Center(child: Text('Surat tugas tidak ditemukan'));
           }
 
-          final suratTugas = snapshot.data![0] as Map<String, dynamic>;
-          final hasilList = snapshot.data![1] as List<Map<String, dynamic>>;
+          final suratTugas = snapshot.data as Map<String, dynamic>;
+          if (_hasilList.isEmpty) {
+            _hasilList = List<Map<String, dynamic>>.from(suratTugas['pemeriksaan']);
+          }
 
           return Column(
             children: [
@@ -216,7 +236,7 @@ class _DetailLaporanState extends State<DetailLaporan> {
                       children: [
                         ExpansionTile(
                           title: Text(
-                            "${suratTugas['no_st'] ?? '-'}",
+                            "${widget.suratTugas.noSt ?? '-'}",
                             style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                           ),
                           children: [
@@ -231,16 +251,16 @@ class _DetailLaporanState extends State<DetailLaporan> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    _buildInfoRow("Dasar", suratTugas['dasar']),
-                                    _buildInfoRow("Nama", suratTugas['nama']),
-                                    _buildInfoRow("NIP", suratTugas['nip']),
+                                    _buildInfoRow("Dasar", widget.suratTugas.dasar),
+                                    _buildInfoRow("Nama", widget.suratTugas.petugas.first.namaPetugas),
+                                    _buildInfoRow("NIP", widget.suratTugas.petugas.first.nipPetugas),
                                     _buildInfoRow("Gol / Pangkat",
-                                        "${suratTugas['gol'] ?? '-'} / ${suratTugas['pangkat'] ?? '-'}"),
-                                    _buildInfoRow("Komoditas", suratTugas['komoditas']),
-                                    _buildInfoRow("Lokasi", suratTugas['lok']),
-                                    _buildInfoRow("Tgl Penugasan", suratTugas['tgl_tugas']),
-                                    _buildInfoRow("Penandatangan", suratTugas['ttd']),
-                                    _buildInfoRow("Perihal", suratTugas['hal']),
+                                        "${widget.suratTugas.petugas.first.gol ?? '-'} / ${widget.suratTugas.petugas.first.pangkat ?? '-'}"),
+                                    _buildInfoRow("Komoditas", widget.suratTugas.komoditas.first.namaKomoditas),
+                                    _buildInfoRow("Lokasi", widget.suratTugas.lokasi.first.namaLokasi),
+                                    _buildInfoRow("Tgl Penugasan", widget.suratTugas.tanggal),
+                                    _buildInfoRow("Penandatangan", widget.suratTugas.namaTtd),
+                                    _buildInfoRow("Perihal", widget.suratTugas.hal),
                                   ],
                                 ),
                               ),
@@ -248,32 +268,47 @@ class _DetailLaporanState extends State<DetailLaporan> {
                           ],
                         ),
                         const SizedBox(height: 16),
-                        ...hasilList.map((item) {
-                          return buildHasilPeriksaCard(
+                        ..._hasilList.map((item) {
+                          return HasilPeriksaCard(
                             item: item,
                             pageController: _pageController!,
-                            enableTap: widget.showDetailHasil,
-                            onTap: () {
-                              if (widget.showDetailHasil) {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => SuratTugasSelesai(
-                                      hasilPemeriksaan: item,
-                                    ),
+                            canTap: widget.showDetailHasil,
+                            showSync: !widget.isViewOnly,
+                            onTap: widget.showDetailHasil
+                                ? () async {
+                              final fotoList = await DatabaseHelper().getImageBase64List(item['id_pemeriksaan']);
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => SuratTugasSelesai(
+                                    hasilPemeriksaan: {
+                                      ...item,
+                                      'fotoBase64List': fotoList,
+                                    },
                                   ),
-                                );
-                              }
+                                ),
+                              );
+                            }
+                                : null,
+                            onSyncPressed: widget.isViewOnly
+                                ? null
+                                : () async {
+                              final db = DatabaseHelper();
+                              await db.syncSingleData(item['id_pemeriksaan']);
+                              item['syncdata'] = 1;
+                              setState(() {
+                                final index = _hasilList.indexWhere((e) => e['id_pemeriksaan'] == item['id_pemeriksaan']);
+                                if (index != -1) _hasilList[index] = item;
+                              });
                             },
                           );
                         }).toList(),
-
                         const SizedBox(height: 24),
                         if (!widget.isViewOnly)
                           buildLaporanFooter(
                             context: context,
                             idSuratTugas: widget.idSuratTugas,
-                            suratTugas: widget.suratTugas,
+                            suratTugas: widget.suratTugas, // ✅ Ini yang bener
                             onSelesaiTugas: widget.onSelesaiTugas,
                           ),
                       ],
@@ -304,8 +339,8 @@ class _DetailLaporanState extends State<DetailLaporan> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              value?.toString() ?? '-',  // Mengecek null dan memberi default '-'
-              style: const TextStyle(color: Color(0xFF522E2E)),  // Menentukan warna teks
+              value?.toString() ?? '-',
+              style: const TextStyle(color: Color(0xFF522E2E)),
             ),
           ),
         ],
@@ -331,8 +366,8 @@ Widget buildConnectionStatus({required bool isConnected}) {
 
 Widget buildLaporanFooter({
   required BuildContext context,
-  required int? idSuratTugas,
-  required Map<String, dynamic> suratTugas,
+  required String? idSuratTugas,
+  required StLengkap suratTugas,
   required VoidCallback onSelesaiTugas,
 }) {
   return Center(
@@ -346,7 +381,7 @@ Widget buildLaporanFooter({
                 context,
                 MaterialPageRoute(
                   builder: (context) => FormPeriksa(
-                    idSuratTugas: idSuratTugas,
+                    idSuratTugas: suratTugas.idSuratTugas,
                     suratTugas: suratTugas,
                     onSelesaiTugas: onSelesaiTugas,
                   ),
@@ -460,98 +495,6 @@ Widget buildLaporanFooter({
           ),
         ),
       ],
-    ),
-  );
-}
-
-Widget buildHasilPeriksaCard({
-  required Map<String, dynamic> item,
-  required PageController pageController,
-  required bool enableTap,
-  required VoidCallback? onTap,
-  bool autoSlide = true,
-}) {
-  final List<String> fotoList = (item['fotoPaths'] as String).split('|');
-  final pageController = PageController();
-  Timer? timer;
-
-  if (autoSlide && fotoList.length > 1) {
-    timer = Timer.periodic(Duration(seconds: 3), (timer) {
-      if (pageController.hasClients) {
-        int nextPage = pageController.page!.round() + 1;
-        if (nextPage >= fotoList.length) nextPage = 0;
-        pageController.animateToPage(
-          nextPage,
-          duration: Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
-      }
-    });
-  }
-
-  return GestureDetector(
-    onTap: enableTap ? onTap : null,
-    child: Card(
-      margin: EdgeInsets.all(10),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.brown[700],
-              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-            ),
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text("${item['lokasi'] ?? '-'}", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                Text(formatTanggal(item['tgl_periksa'] ?? '-'), style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (fotoList.isNotEmpty)
-                  Container(
-                    width: 100,
-                    height: 100,
-                    margin: EdgeInsets.only(right: 12),
-                    child: PageView.builder(
-                      controller: pageController,
-                      itemCount: fotoList.length,
-                      itemBuilder: (context, index) {
-                        return ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.file(
-                            File(fotoList[index]),
-                            fit: BoxFit.cover,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Komoditas", style: TextStyle(fontWeight: FontWeight.bold)),
-                      Text(item['komoditas'] ?? '-'),
-                      SizedBox(height: 8),
-                      Text("Temuan", style: TextStyle(fontWeight: FontWeight.bold)),
-                      Text(item['temuan'] ?? '-'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     ),
   );
 }

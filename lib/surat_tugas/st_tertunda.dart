@@ -1,12 +1,10 @@
-import 'surat_tugas.dart';
 import 'package:flutter/material.dart';
-import 'st_aktif.dart';
 import 'periksa_lokasi.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'form_periksa.dart';
+import 'package:q_officer_barantin/models/st_lengkap.dart';
 
 class SuratTugasTertunda extends StatefulWidget {
-  final Map<String, String> suratTugas;
+  final StLengkap suratTugas;
   final Function onTerimaTugas;
   final bool hasActiveTask;
 
@@ -51,18 +49,49 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildDetailItem("No Surat Tugas", Text(widget.suratTugas['no_st'] ?? "")),
-                      _buildDetailItem("Dasar", Text(widget.suratTugas['dasar'] ?? "")),
-                      _buildDetailItem("Nama", Text(widget.suratTugas['nama'] ?? "")),
-                      _buildDetailItem("NIP", Text(widget.suratTugas['nip'] ?? "")),
-                      _buildDetailItem("Golongan / Pangkat",
-                        Text("${widget.suratTugas['gol']} / ${widget.suratTugas['pangkat'] ?? ""}"),
+                      _buildDetailItem("No Surat Tugas", Text(widget.suratTugas.noSt)),
+                      _buildDetailItem("Dasar", Text(widget.suratTugas.dasar)),
+                      _buildDetailItem(
+                        "Petugas",
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: SizedBox(
+                            height: (widget.suratTugas.petugas.length > 2 ? 150 : widget.suratTugas.petugas.length * 15),
+                            child: ListView.builder(
+                              itemCount: widget.suratTugas.petugas.length,
+                              itemBuilder: (context, index) {
+                                final petugas = widget.suratTugas.petugas[index];
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 4.0),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        petugas.namaPetugas,
+                                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                                      ),
+                                      Text(
+                                        petugas.nipPetugas,
+                                        style: TextStyle(fontSize: 10, color: Colors.black),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
                       ),
-                      _buildDetailItem("Komoditas", Text(widget.suratTugas['komoditas'] ?? "")),
-                      _buildDetailItem("Lokasi", Text(widget.suratTugas['lok'] ?? "")),
-                      _buildDetailItem("Tanggal Penugasan", Text(widget.suratTugas['tgl_tugas'] ?? "")),
-                      _buildDetailItem("Penandatangan", Text(widget.suratTugas['ttd'] ?? "")),
-                      _buildDetailItem("Perihal", Text(widget.suratTugas['hal'] ?? "")),
+                      _buildDetailItem("Tanggal Penugasan", Text(widget.suratTugas.tanggal)),
+                      _buildDetailItem("Komoditas", Text(widget.suratTugas.komoditas.isNotEmpty ? widget.suratTugas.komoditas[0].namaKomoditas : "N/A")),
+                      _buildDetailItem("Lokasi", Text(widget.suratTugas.lokasi.isNotEmpty ? widget.suratTugas.lokasi[0].namaLokasi : "N/A")),
+                      _buildDetailItem("Penandatangan", Text(widget.suratTugas.namaTtd)),
+                      _buildDetailItem("NIP Penandatangan", Text(widget.suratTugas.nipTtd)),
+                      _buildDetailItem("Perihal", Text(widget.suratTugas.hal)),
                       const SizedBox(height: 16),
                       Card(
                         elevation: 2,
@@ -95,7 +124,9 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                                       onTap: () {
                                         Navigator.push(
                                           context,
-                                            MaterialPageRoute(builder: (context) => PeriksaLokasi(idSuratTugas: int.parse(widget.suratTugas['id_surat_tugas']!)),
+                                            MaterialPageRoute(builder: (context) => PeriksaLokasi(
+                                              idSuratTugas: widget.suratTugas.idSuratTugas,
+                                            ),
                                         ));
                                       },
                                     ),
@@ -142,9 +173,11 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                   child: ElevatedButton(
                     onPressed: widget.hasActiveTask
                         ? () => _showUnavailable(context)
-                        : () {
-                      widget.onTerimaTugas();
-                      Navigator.pop(context);
+                        : () async {
+                      await widget.onTerimaTugas(); // Tunggu proses terima tugas selesai
+                      if (context.mounted) {
+                        Navigator.pop(context); // Setelah itu baru pop
+                      }
                     },
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),

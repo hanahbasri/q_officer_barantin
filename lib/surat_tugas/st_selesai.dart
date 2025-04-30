@@ -1,23 +1,43 @@
-import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:q_officer_barantin/databases/db_helper.dart';
 
-class SuratTugasSelesai extends StatelessWidget {
+class SuratTugasSelesai extends StatefulWidget {
   final Map<String, dynamic> hasilPemeriksaan;
 
-  SuratTugasSelesai({required this.hasilPemeriksaan});
+  const SuratTugasSelesai({Key? key, required this.hasilPemeriksaan}) : super(key: key);
+
+  @override
+  State<SuratTugasSelesai> createState() => _SuratTugasSelesaiState();
+}
+
+class _SuratTugasSelesaiState extends State<SuratTugasSelesai> {
+  List<String> base64List = [];
+
+  @override
+  void initState() {
+    super.initState();
+    loadFoto();
+  }
+
+  Future<void> loadFoto() async {
+    final id = widget.hasilPemeriksaan['id_pemeriksaan'];
+    final db = DatabaseHelper();
+    final list = await db.getImageBase64List(id);
+    setState(() {
+      base64List = list;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Ambil foto dari DB
-    final fotoString = hasilPemeriksaan['fotoPaths'] as String?;
-    final imagePaths = fotoString != null && fotoString.isNotEmpty
-        ? fotoString.split('|')
-        : <String>[];
+    final hasil = widget.hasilPemeriksaan;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text("Hasil Pemeriksaan", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Color(0xFF522E2E),
+        title: const Text("Hasil Pemeriksaan", style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF522E2E),
         foregroundColor: Colors.white,
         centerTitle: true,
       ),
@@ -30,35 +50,33 @@ class SuratTugasSelesai extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                if (imagePaths.isNotEmpty)
+                if (base64List.isNotEmpty)
                   SizedBox(
                     height: 200,
                     child: PageView.builder(
-                      itemCount: imagePaths.length,
+                      itemCount: base64List.length,
                       controller: PageController(viewportFraction: 0.9),
                       itemBuilder: (context, index) {
+                        final bytes = base64Decode(base64List[index]);
                         return GestureDetector(
-                          onTap: () => _showImagePreview(context, imagePaths[index]),
+                          onTap: () => _showImagePreview(context, bytes),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: Image.file(
-                              File(imagePaths[index]),
-                              fit: BoxFit.cover,
-                            ),
+                            child: Image.memory(bytes, fit: BoxFit.cover),
                           ),
                         );
                       },
                     ),
-                  ),
-                SizedBox(height: 16),
-
-                // Tabel hasil pemeriksaan
-                _buildRow("Lokasi", hasilPemeriksaan['lokasi']),
-                _buildRow("Target / Sasaran", hasilPemeriksaan['target']),
-                _buildRow("Metode", hasilPemeriksaan['metode']),
-                _buildRow("Komoditas", hasilPemeriksaan['komoditas']),
-                _buildRow("Temuan", hasilPemeriksaan['temuan']),
-                _buildRow("Catatan", hasilPemeriksaan['catatan']),
+                  )
+                else
+                  const Text("Belum ada foto"),
+                const SizedBox(height: 16),
+                _buildRow("Lokasi", hasil['nama_lokasi']),
+                _buildRow("Target / Sasaran", hasil['target']),
+                _buildRow("Metode", hasil['metode']),
+                _buildRow("Komoditas", hasil['nama_komoditas']),
+                _buildRow("Temuan", hasil['temuan']),
+                _buildRow("Catatan", hasil['catatan']),
               ],
             ),
           ),
@@ -73,25 +91,25 @@ class SuratTugasSelesai extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(flex: 3, child: Text(label, style: TextStyle(fontWeight: FontWeight.bold))),
-          Text(" : "),
+          Expanded(flex: 3, child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold))),
+          const Text(" : "),
           Expanded(flex: 5, child: Text(value ?? "-")),
         ],
       ),
     );
   }
 
-  void _showImagePreview(BuildContext context, String imagePath) {
+  void _showImagePreview(BuildContext context, Uint8List imageBytes) {
     showDialog(
       context: context,
       builder: (_) => Dialog(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.file(File(imagePath)),
+            Image.memory(imageBytes),
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text("Tutup"),
+              child: const Text("Tutup"),
             ),
           ],
         ),

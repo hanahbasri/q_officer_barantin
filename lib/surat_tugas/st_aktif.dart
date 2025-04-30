@@ -2,15 +2,16 @@ import 'package:flutter/material.dart';
 import 'form_periksa.dart';
 import 'periksa_lokasi.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:q_officer_barantin/models/st_lengkap.dart';
 
 class SuratTugasAktifPage extends StatelessWidget {
-  final int? idSuratTugas;
-  final Map<String, dynamic> suratTugas;
+  final String idSuratTugas;
+  final StLengkap suratTugas;
   final VoidCallback onSelesaiTugas;
 
   const SuratTugasAktifPage({
     Key? key,
-    this.idSuratTugas,
+    required this.idSuratTugas,
     required this.suratTugas,
     required this.onSelesaiTugas,
   }) : super(key: key);
@@ -105,16 +106,49 @@ class SuratTugasAktifPage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildDetailItem("No Surat Tugas", Text(suratTugas['no_st'] ?? "")),
-                      _buildDetailItem("Dasar", Text(suratTugas['dasar'] ?? "")),
-                      _buildDetailItem("Nama", Text(suratTugas['nama'] ?? "")),
-                      _buildDetailItem("NIP", Text(suratTugas['nip'] ?? "")),
-                      _buildDetailItem("Golongan / Pangkat", Text("${suratTugas['gol']} / ${suratTugas['pangkat'] ?? ""}")),
-                      _buildDetailItem("Komoditas", Text(suratTugas['komoditas'] ?? "")),
-                      _buildDetailItem("Lokasi", Text(suratTugas['lok'] ?? "")),
-                      _buildDetailItem("Tanggal Penugasan", Text(suratTugas['tgl_tugas'] ?? "")),
-                      _buildDetailItem("Penandatangan", Text(suratTugas['ttd'] ?? "")),
-                      _buildDetailItem("Perihal", Text(suratTugas['hal'] ?? "")),
+                      _buildDetailItem("No Surat Tugas", Text(suratTugas.noSt)),
+                      _buildDetailItem("Dasar", Text(suratTugas.dasar)),
+                      _buildDetailItem(
+                        "Petugas",
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: SizedBox(
+                            height: (suratTugas.petugas.length > 2 ? 150 : suratTugas.petugas.length * 50),
+                            child: ListView.builder(
+                              itemCount: suratTugas.petugas.length,
+                              itemBuilder: (context, index) {
+                                final petugas = suratTugas.petugas[index];
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 4.0),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        petugas.namaPetugas,
+                                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                                      ),
+                                      Text(
+                                        petugas.nipPetugas,
+                                        style: TextStyle(fontSize: 10, color: Colors.black),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                      _buildDetailItem("Tanggal Penugasan", Text(suratTugas.tanggal)),
+                      _buildDetailItem("Komoditas", Text(suratTugas.komoditas.isNotEmpty ? suratTugas.komoditas[0].namaKomoditas : "N/A")),
+                      _buildDetailItem("Lokasi", Text(suratTugas.lokasi.isNotEmpty ? suratTugas.lokasi[0].namaLokasi : "N/A")),
+                      _buildDetailItem("Penandatangan", Text(suratTugas.namaTtd)),
+                      _buildDetailItem("NIP Penandatangan", Text(suratTugas.nipTtd)),
+                      _buildDetailItem("Perihal", Text(suratTugas.hal)),
                       Card(
                         elevation: 2,
                         shape: RoundedRectangleBorder(
@@ -175,7 +209,7 @@ class SuratTugasAktifPage extends StatelessWidget {
                             context,
                             MaterialPageRoute(
                               builder: (context) => FormPeriksa(
-                                idSuratTugas: idSuratTugas, // ⬅️ sekarang udah gak null
+                                idSuratTugas: idSuratTugas,
                                 suratTugas: suratTugas,
                                 onSelesaiTugas: onSelesaiTugas,
                               ),
