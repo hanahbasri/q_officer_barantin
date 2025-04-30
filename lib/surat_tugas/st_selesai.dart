@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 class SuratTugasSelesai extends StatelessWidget {
   final Map<String, dynamic> hasilPemeriksaan;
 
-  SuratTugasSelesai({required this.hasilPemeriksaan});
+  const SuratTugasSelesai({super.key, required this.hasilPemeriksaan});
 
   @override
   Widget build(BuildContext context) {
@@ -68,6 +68,9 @@ class SuratTugasSelesai extends StatelessWidget {
   }
 
   Widget _buildRow(String label, String? value) {
+    final isCatatan = label.toLowerCase().contains("catatan");
+    final isEmpty = value == null || value.trim().isEmpty;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -75,25 +78,38 @@ class SuratTugasSelesai extends StatelessWidget {
         children: [
           Expanded(flex: 3, child: Text(label, style: TextStyle(fontWeight: FontWeight.bold))),
           Text(" : "),
-          Expanded(flex: 5, child: Text(value ?? "-")),
+          Expanded(
+            flex: 5,
+            child: isCatatan && isEmpty
+                ? Text("Tidak ada catatan", style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey[700]))
+                : Text(value ?? "-"),
+          ),
         ],
       ),
     );
   }
 
+
   void _showImagePreview(BuildContext context, String imagePath) {
     showDialog(
       context: context,
       builder: (_) => Dialog(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Image.file(File(imagePath)),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text("Tutup"),
-            ),
-          ],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.file(
+                File(imagePath),
+                fit: BoxFit.cover,
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text("Tutup"),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -1,9 +1,9 @@
-import 'surat_tugas.dart';
+import 'package:flutter/foundation.dart';
+import 'package:url_launcher/url_launcher_string.dart';
+
 import 'package:flutter/material.dart';
-import 'st_aktif.dart';
 import 'periksa_lokasi.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'form_periksa.dart';
 
 class SuratTugasTertunda extends StatefulWidget {
   final Map<String, String> suratTugas;
@@ -11,11 +11,11 @@ class SuratTugasTertunda extends StatefulWidget {
   final bool hasActiveTask;
 
   const SuratTugasTertunda({
-    Key? key,
+    super.key,
     required this.suratTugas,
     required this.onTerimaTugas,
     required this.hasActiveTask,
-  }) : super(key: key);
+  });
 
   @override
   _SuratTugasTertundaState createState() => _SuratTugasTertundaState();
@@ -109,8 +109,39 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                       const SizedBox(height: 16),
                       Center(
                         child: GestureDetector(
-                          onTap: () {
-                            // Aksi saat diklik, misalnya unduh file
+                          onTap: () async {
+                            final link = widget.suratTugas['link'];
+                            if (kDebugMode) {
+                              print("🧾 LINK DITERIMA: $link");
+                            }
+
+                            if (link == null || link.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Link PDF tidak tersedia')),
+                              );
+                              return;
+                            }
+
+                            final url = 'https://cert.karantinaindonesia.go.id/print_cert/penugasan/k22/$link';
+                            if (kDebugMode) {
+                              print("🌐 URL: $url");
+                            }
+
+                            try {
+                              final success = await launchUrlString(url);
+                              if (!success) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Gagal membuka link PDF.')),
+                                );
+                              }
+                            } catch (e) {
+                              if (kDebugMode) {
+                                print('❌ ERROR saat buka URL: $e');
+                              }
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Terjadi kesalahan saat membuka link')),
+                              );
+                            }
                           },
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -118,9 +149,9 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                               Icon(Icons.download, color: Colors.red),
                               SizedBox(width: 8),
                               Text(
-                                "Unduh PDF Permohonan",
+                                "Unduh PDF Surat Tugas",
                                 style: TextStyle(
-                                  fontSize: 16,
+                                  fontSize: 14,
                                   fontWeight: FontWeight.bold,
                                   color: Colors.red,
                                   decoration: TextDecoration.underline,
@@ -204,22 +235,21 @@ void _showUnavailable(BuildContext context) {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.cancel, size: 48, color: Colors.brown[700]),
+          const Icon(Icons.cancel_outlined, size: 48, color: Color(0xFF522E2E)),
           const SizedBox(height: 16),
-          Text(
-            'Gagal Terima Surat Tugas',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.brown[800]),
+          const Text(
+            'Gagal Terima Tugas',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF522E2E)),
           ),
           const SizedBox(height: 8),
           const Text(
-            'Mohon maaf, Anda tidak dapat menerima surat tugas sebelum menyelesaikan surat tugas aktif.',
+            'Anda masih memiliki surat tugas yang aktif.\nSilakan selesaikan terlebih dahulu.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.black87),
           ),
           const SizedBox(height: 24),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.brown,
+              backgroundColor: const Color(0xFF522E2E),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),

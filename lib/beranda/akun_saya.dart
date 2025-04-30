@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:q_officer_barantin/auth_provider.dart';
+import 'package:q_officer_barantin/services/auth_provider.dart';
 
 class AkunSayaPage extends StatefulWidget {
   const AkunSayaPage({super.key});

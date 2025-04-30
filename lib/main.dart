@@ -9,19 +9,19 @@ import 'services/notification_service.dart';
 import 'services/notif_history_screen.dart';
 import 'services/notification_provider.dart';
 import 'services/notif_detail_screen.dart';
-import 'auth_provider.dart';
+import 'services/auth_provider.dart';
 import 'login_screen.dart';
 import 'splash_screen.dart';
 import 'beranda/home_screen.dart';
 
-/// ✅ Hindari duplikat Firebase init
+
 Future<void> initFirebaseOnce() async {
   if (Firebase.apps.isEmpty) {
-    await Firebase.initializeApp();  // Inisialisasi tanpa opsi
+    await Firebase.initializeApp();
   }
 }
 
-/// ✅ Background handler untuk notifikasi
+/// Background handler untuk notifikasi
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await initFirebaseOnce();
   debugPrint("📨 [Background] ${message.notification?.title}");
@@ -30,12 +30,12 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Inisialisasi Firebase
+
   await initFirebaseOnce();
 
-  // Inisialisasi data format tanggal sesuai dengan lokal
+
   await initializeDateFormatting('id_ID', null);
-  // Pastikan dipanggil sebelum runApp
+
 
   // Setup background notification
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);

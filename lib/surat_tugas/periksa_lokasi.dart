@@ -1,14 +1,14 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
-import '../databases/db_helper.dart'; // Pastikan ini diimport untuk memanggil getLocations()
+import 'package:custom_info_window/custom_info_window.dart';
+import '../databases/db_helper.dart';
 
 class PeriksaLokasi extends StatefulWidget {
-  final int idSuratTugas; // ⬅️ tambahkan ini
+  final int idSuratTugas;
 
-  const PeriksaLokasi({Key? key, required this.idSuratTugas}) : super(key: key);
+  const PeriksaLokasi({super.key, required this.idSuratTugas});
 
   @override
   _PeriksaLokasiState createState() => _PeriksaLokasiState();
@@ -16,10 +16,11 @@ class PeriksaLokasi extends StatefulWidget {
 
 
 class _PeriksaLokasiState extends State<PeriksaLokasi> {
+  final Set<Marker> _markers = {};
+  final Set<Polyline> _polylines = {};
+  final CustomInfoWindowController _customInfoWindowController = CustomInfoWindowController();
   GoogleMapController? _mapController;
-  Set<Marker> _markers = {};
-  Set<Polyline> _polylines = {};
-  Database? _database;
+
 
   @override
   void initState() {
@@ -52,11 +53,39 @@ class _PeriksaLokasiState extends State<PeriksaLokasi> {
           Marker(
             markerId: MarkerId(row['id'].toString()),
             position: position,
-            infoWindow: InfoWindow(
-              title: name,
-              snippet: "🕒 $timestamp\n📍 📄 $detail",
-              onTap: () => _openGoogleMaps(position),
-            ),
+            onTap: () {
+              _customInfoWindowController.addInfoWindow!(
+                Container(
+                  width: 250,
+                  padding: EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black26, blurRadius: 5),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name, style: TextStyle(fontWeight: FontWeight.bold)),
+                      SizedBox(height: 4),
+                      Text("🕒 $timestamp", style: TextStyle(fontSize: 12)),
+                      Text("📄 $detail", style: TextStyle(fontSize: 12)),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () => _openGoogleMaps(position),
+                          child: Text("Buka di Maps", style: TextStyle(color: Colors.blue)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                position,
+              );
+            },
           ),
         );
       }
@@ -73,6 +102,30 @@ class _PeriksaLokasiState extends State<PeriksaLokasi> {
         );
       }
     });
+  if (_mapController != null && positions.isNotEmpty) {
+      if (positions.length == 1) {
+      // Fokus ke 1 marker
+      _mapController!.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(target: positions.first, zoom: 16),
+        ),
+      );
+      } else {
+      // Fokus ke semua marker (fit bounds)
+      final bounds = LatLngBounds(
+        southwest: LatLng(
+          positions.map((p) => p.latitude).reduce((a, b) => a < b ? a : b),
+          positions.map((p) => p.longitude).reduce((a, b) => a < b ? a : b),
+        ),
+        northeast: LatLng(
+          positions.map((p) => p.latitude).reduce((a, b) => a > b ? a : b),
+          positions.map((p) => p.longitude).reduce((a, b) => a > b ? a : b),
+        ),
+      );
+
+      _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 100));
+      }
+    }
   }
 
   // Fungsi untuk membuka Google Maps
@@ -82,7 +135,9 @@ class _PeriksaLokasiState extends State<PeriksaLokasi> {
     if (await canLaunchUrl(url)) {
       await launchUrl(url);
     } else {
-      print("Tidak dapat membuka Google Maps.");
+      if (kDebugMode) {
+        print("Tidak dapat membuka Google Maps.");
+      }
     }
   }
 
@@ -98,13 +153,26 @@ class _PeriksaLokasiState extends State<PeriksaLokasi> {
         foregroundColor: Colors.white,
         centerTitle: true,
       ),
-      body: GoogleMap(
-        initialCameraPosition: CameraPosition(target: LatLng(-6.2088, 106.8456), zoom: 12),
-        markers: _markers,
-        polylines: _polylines,
-        onMapCreated: (GoogleMapController controller) {
-          _mapController = controller;
-        },
+      body: Stack(
+        children: [
+          GoogleMap(
+            initialCameraPosition: CameraPosition(target: LatLng(-6.2088, 106.8456), zoom: 12),
+            markers: _markers,
+            polylines: _polylines,
+            onMapCreated: (controller) {
+              _mapController = controller;
+              _customInfoWindowController.googleMapController = controller;
+            },
+            onTap: (position) => _customInfoWindowController.hideInfoWindow!(),
+            onCameraMove: (_) => _customInfoWindowController.onCameraMove!(),
+          ),
+          CustomInfoWindow(
+            controller: _customInfoWindowController,
+            height: 130,
+            width: 250,
+            offset: 50,
+          ),
+        ],
       ),
     );
   }

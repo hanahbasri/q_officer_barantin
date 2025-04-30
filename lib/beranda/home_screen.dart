@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:q_officer_barantin/beranda/side_bar.dart';
-import 'package:q_officer_barantin/auth_provider.dart';
+import 'package:q_officer_barantin/services/auth_provider.dart';
 import 'package:shimmer/shimmer.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -112,7 +112,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     crossAxisCount: 2,
                     mainAxisSpacing: 12,
                     crossAxisSpacing: 12,
-                    childAspectRatio: 1.4, // disesuaikan agar tidak overflow
+                    childAspectRatio: 1.4,
                   ),
                   delegate: SliverChildListDelegate([
                     _buildMenuCard(

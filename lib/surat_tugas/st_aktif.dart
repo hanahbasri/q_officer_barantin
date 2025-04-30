@@ -9,76 +9,11 @@ class SuratTugasAktifPage extends StatelessWidget {
   final VoidCallback onSelesaiTugas;
 
   const SuratTugasAktifPage({
-    Key? key,
+    super.key,
     this.idSuratTugas,
     required this.suratTugas,
     required this.onSelesaiTugas,
-  }) : super(key: key);
-
-  void _showConfirmation(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        backgroundColor: const Color(0xFFFBF2F2),
-        contentPadding: const EdgeInsets.all(20),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.question_mark_rounded, size: 60, color: Color(0xFF522E2E)),
-            const SizedBox(height: 10),
-            Text(
-              'Konfirmasi Selesai Tugas',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.brown[800],
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              "Apakah Anda yakin ingin menyelesaikan Surat Tugas ini?",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.black87),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.grey,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Tidak'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.brown,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      onSelesaiTugas();
-                      Navigator.pop(context);
-                    },
-                    child: const Text('Ya'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -175,14 +110,14 @@ class SuratTugasAktifPage extends StatelessWidget {
                             context,
                             MaterialPageRoute(
                               builder: (context) => FormPeriksa(
-                                idSuratTugas: idSuratTugas, // ⬅️ sekarang udah gak null
+                                idSuratTugas: idSuratTugas,
                                 suratTugas: suratTugas,
                                 onSelesaiTugas: onSelesaiTugas,
                               ),
                             ),
                           );
                           if (result == true) {
-                            Navigator.pop(context, true); // ini ngirim balik ke SuratTugasPage
+                            Navigator.pop(context, true);
                           }
                         },
                         style: ElevatedButton.styleFrom(

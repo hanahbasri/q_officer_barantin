@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:q_officer_barantin/beranda/akun_saya.dart';
-import 'package:q_officer_barantin/auth_provider.dart';
+import 'package:q_officer_barantin/services/auth_provider.dart';
 import 'dart:io';
 
 const Color darkBrown = Color(0xFF522E2E);

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:dropdown_search/dropdown_search.dart';
-import 'package:path/path.dart';
 import '../databases/db_helper.dart';
 import 'detail_laporan.dart';
 
@@ -12,17 +11,17 @@ class FormPeriksa extends StatefulWidget {
   final VoidCallback onSelesaiTugas;
 
   const FormPeriksa({
-    Key? key,
+    super.key,
     this.idSuratTugas,
     required this.suratTugas,
     required this.onSelesaiTugas,
-  }) : super(key: key);
+  });
 
   @override
-  _FormPeriksaState createState() => _FormPeriksaState();
+  State<FormPeriksa> createState() => _FormPeriksaState();
 }
 
-class _FormPeriksaState extends State<FormPeriksa> {
+class _FormPeriksaState extends State<FormPeriksa> with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   String? selectedTarget;
   String? selectedTemuan;
@@ -33,14 +32,40 @@ class _FormPeriksaState extends State<FormPeriksa> {
   final TextEditingController _metodeController = TextEditingController();
   final TextEditingController _catatanController = TextEditingController();
 
+  late AnimationController _searchController;
+  late Animation<Offset> _searchOffset;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..repeat(reverse: true);
+
+    _searchOffset = Tween<Offset>(
+      begin: Offset.zero,
+      end: const Offset(0.05, 0),
+    ).animate(CurvedAnimation(
+      parent: _searchController,
+      curve: Curves.easeInOut,
+    ));
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
 
   Future<void> pickImages(BuildContext context, ImageSource source, {bool isMulti = false}) async {
     const maxTotalSizeInBytes = 2 * 1024 * 1024; // 2MB
     List<XFile> tempImages = [];
 
     if (isMulti) {
-      final List<XFile>? selectedImages = await _picker.pickMultiImage();
-      if (selectedImages != null && selectedImages.isNotEmpty) {
+      final List<XFile> selectedImages = await _picker.pickMultiImage();
+      if (selectedImages.isNotEmpty) {
         tempImages = [...?_images, ...selectedImages];
       } else {
         return;
@@ -165,7 +190,7 @@ class _FormPeriksaState extends State<FormPeriksa> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF522E2E),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                    padding: const EdgeInsets.symmetric(vertical: 12), // hilangkan horizontal biar responsif
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                   child: const Text("Periksa Hasil", style: TextStyle(color: Colors.white)),
                 ),
@@ -192,13 +217,14 @@ class _FormPeriksaState extends State<FormPeriksa> {
                     side: BorderSide.none,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
-                  child: const Text("Isi Form Kembali", style: TextStyle(color: Colors.black)),
+                  child: const Text("Isi Form Kembali", style: TextStyle(color: Color(0xFF522E2E))),
                 ),
               ),
             ],
           ),
         );
       },
+
     );
   }
 
@@ -240,10 +266,10 @@ class _FormPeriksaState extends State<FormPeriksa> {
       });
 
       await _showSuccessPopup(context);
-      Navigator.pop(context, true); // << ini penting buat update tombol sebelumnya
+      Navigator.pop(context, true);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Harap lengkapi seluruh isian laporan pemeriksaan")),
+        SnackBar(content: Text("Harap lengkapi seluruh isian laporan pemeriksaan!")),
       );
     }
   }
@@ -272,9 +298,44 @@ class _FormPeriksaState extends State<FormPeriksa> {
                 selectedItem: selectedLokasi,
                 validator: (value) => selectedLokasi == null ? "Wajib diisi" : null,
                 decoratorProps: DropDownDecoratorProps(
-                  decoration: InputDecoration(border: OutlineInputBorder()),
+                    decoration: InputDecoration(
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      border: OutlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                    )
                 ),
-                popupProps: PopupProps.menu(showSearchBox: true),
+                popupProps: PopupProps.dialog(
+                  showSearchBox: true,
+                  dialogProps: DialogProps(
+                    backgroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  searchFieldProps: TextFieldProps(
+                    decoration: InputDecoration(
+                      prefixIcon: _buildAnimatedSearchIcon(),
+                      hintText: 'Cari...',
+                      filled: true,
+                      fillColor: Colors.grey[100],
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Color(0xFF522E2E)),
+                      ),
+                    ),
+                  ),
+                ),
               ),
               SizedBox(height: 16),
 
@@ -285,9 +346,44 @@ class _FormPeriksaState extends State<FormPeriksa> {
                 selectedItem: selectedTarget,
                 validator: (value) => selectedTarget == null ? "Wajib diisi" : null,
                 decoratorProps: DropDownDecoratorProps(
-                  decoration: InputDecoration(border: OutlineInputBorder()),
+                    decoration: InputDecoration(
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      border: OutlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                    )
                 ),
-                popupProps: PopupProps.menu(showSearchBox: true),
+                popupProps: PopupProps.dialog(
+                  showSearchBox: true,
+                  dialogProps: DialogProps(
+                    backgroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  searchFieldProps: TextFieldProps(
+                    decoration: InputDecoration(
+                      prefixIcon: _buildAnimatedSearchIcon(),
+                      hintText: 'Cari...',
+                      filled: true,
+                      fillColor: Colors.grey[100],
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Color(0xFF522E2E)),
+                      ),
+                    ),
+                  ),
+                ),
               ),
               SizedBox(height: 16),
 
@@ -295,7 +391,20 @@ class _FormPeriksaState extends State<FormPeriksa> {
               TextFormField(
                 controller: _metodeController,
                 validator: (value) => value!.isEmpty ? "Wajib diisi" : null,
-                decoration: InputDecoration(border: OutlineInputBorder()),
+                  decoration: InputDecoration(
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    border: OutlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                  )
               ),
               SizedBox(height: 16),
 
@@ -306,9 +415,44 @@ class _FormPeriksaState extends State<FormPeriksa> {
                 selectedItem: selectedTemuan,
                 validator: (value) => selectedTemuan == null ? "Wajib diisi" : null,
                 decoratorProps: DropDownDecoratorProps(
-                  decoration: InputDecoration(border: OutlineInputBorder()),
+                    decoration: InputDecoration(
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      border: OutlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                    )
                 ),
-                popupProps: PopupProps.menu(showSearchBox: true),
+                popupProps: PopupProps.dialog(
+                  showSearchBox: true,
+                  dialogProps: DialogProps(
+                    backgroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  searchFieldProps: TextFieldProps(
+                    decoration: InputDecoration(
+                      prefixIcon: _buildAnimatedSearchIcon(),
+                      hintText: 'Cari...',
+                      filled: true,
+                      fillColor: Colors.grey[100],
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Color(0xFF522E2E)),
+                      ),
+                    ),
+                  ),
+                ),
               ),
               SizedBox(height: 16),
 
@@ -319,16 +463,64 @@ class _FormPeriksaState extends State<FormPeriksa> {
                 selectedItem: selectedKomoditas,
                 validator: (value) => selectedKomoditas == null ? "Wajib diisi" : null,
                 decoratorProps: DropDownDecoratorProps(
-                  decoration: InputDecoration(border: OutlineInputBorder()),
+                    decoration: InputDecoration(
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      border: OutlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                    )
                 ),
-                popupProps: PopupProps.menu(showSearchBox: true),
+                popupProps: PopupProps.dialog(
+                  showSearchBox: true,
+                  dialogProps: DialogProps(
+                    backgroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  searchFieldProps: TextFieldProps(
+                    decoration: InputDecoration(
+                      prefixIcon: _buildAnimatedSearchIcon(),
+                      hintText: 'Cari...',
+                      filled: true,
+                      fillColor: Colors.grey[100],
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Color(0xFF522E2E)),
+                      ),
+                    ),
+                  ),
+                ),
               ),
               SizedBox(height: 16),
 
               Text("Catatan", style: TextStyle(fontWeight: FontWeight.bold)),
               TextFormField(
                 controller: _catatanController,
-                decoration: InputDecoration(border: OutlineInputBorder()),
+                  decoration: InputDecoration(
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    border: OutlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                  )
               ),
               SizedBox(height: 16),
 
@@ -347,15 +539,21 @@ class _FormPeriksaState extends State<FormPeriksa> {
                           showDialog(
                             context: context,
                             builder: (_) => Dialog(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Image.file(File(_images![index].path)),
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    child: Text('Tutup'),
-                                  ),
-                                ],
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(15),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Image.file(File(_images![index].path)),
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      child: Text('Tutup'),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           );
@@ -373,7 +571,7 @@ class _FormPeriksaState extends State<FormPeriksa> {
                   },
                 ),
               )
-                  : Text("Belum ada foto", style: TextStyle(color: Colors.red)),
+                  : Text("Belum ada foto", style: TextStyle(fontSize: 12, color: Colors.red)),
 
               ElevatedButton.icon(
                 onPressed: () => _showImagePicker(context),
@@ -385,20 +583,40 @@ class _FormPeriksaState extends State<FormPeriksa> {
               SizedBox(height: 20),
 
               Center(
-                child: ElevatedButton(
-                  onPressed: () => _handleSubmit(context),
-                  style: ElevatedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                    backgroundColor: Color(0xFF522E2E),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(5))),
+                child: SizedBox(
+                  width: 250,
+                  child: ElevatedButton(
+                    onPressed: () => _handleSubmit(context),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      backgroundColor: const Color(0xFF522E2E),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(5),
+                        side: const BorderSide(color: Color(0xFF522E2E), width: 1),
+                      ),
+                    ),
+                    child: const Text(
+                      "Kirim",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
-                  child: Text("Kirim", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.white)),
                 ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildAnimatedSearchIcon() {
+    return SlideTransition(
+      position: _searchOffset,
+      child: const Icon(Icons.search, color: Colors.grey),
     );
   }
 }

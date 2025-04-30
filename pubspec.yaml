@@ -39,10 +39,17 @@ dependencies:
   custom_info_window: ^1.0.1
 
 
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_icons:
+    android: true
+    ios: true
+    image_path: "images/logo_apk.png"
 
 flutter:
   uses-material-design: true
@@ -53,6 +60,7 @@ flutter:
     - images/plus_icon.png
     - images/pk_icon.png
     - images/not_found.png
+    - images/logo_apk.png
 
 fonts:
   - family: Inter
@@ -66,3 +74,9 @@ fonts:
       - asset: fonts/Inter_28pt-Regular.ttf
       - asset: fonts/Inter_28pt-Bold.ttf
         weight: 700
+
+  - family: Urbanist
+    fonts:
+      - asset: fonts/Urbanist-BlackItalic.ttf
+        weight: 900
+

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'st_aktif.dart';
 import 'st_tertunda.dart';
-import 'st_selesai.dart';
 import '../databases/db_helper.dart';
 import 'detail_laporan.dart';
 
@@ -12,28 +11,43 @@ class SuratTugasPage extends StatefulWidget {
   _SuratTugasPageState createState() => _SuratTugasPageState();
 }
 
-class _SuratTugasPageState extends State<SuratTugasPage> {
+class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProviderStateMixin {
   bool hasActiveTask = false;
   Map<String, String>? suratTugasAktif;
   List<Map<String, String>> suratTugasTertunda = [];
+  List<Map<String, String>> suratTugasSelesai = [];
+
+  late AnimationController _controller;
+  late Animation<double> _animation;
 
   @override
   void initState() {
     super.initState();
     _loadSuratTugas();
+
+    _controller = AnimationController(
+      duration: const Duration(seconds: 1),
+      vsync: this,
+    )..repeat(reverse:true);
+    _animation = Tween<double>(begin: -0.05, end: 0.05).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   void _loadSuratTugas() async {
     final db = DatabaseHelper();
     final data = await db.getData('Surat_Tugas');
-    print("Data surat tugas: $data"); // ← debug log
 
     setState(() {
       suratTugasTertunda = data.map((item) => item.map((key, value) => MapEntry(key, value.toString()))).toList();
     });
   }
-
-  List<Map<String, String>> suratTugasSelesai = [];
 
   void _terimaTugas(Map<String, String> tugas) {
     setState(() {
@@ -70,20 +84,43 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Label (rata kiri, tapi pakai lebar tetap biar sejajar)
           SizedBox(
-            width: 130, // lebar tetap supaya ":" sejajar
+            width: 130,
             child: Text(
               label,
               style: const TextStyle(fontWeight: FontWeight.bold),
-              textAlign: TextAlign.left, // ini dia yang kamu mau
+              textAlign: TextAlign.left,
             ),
           ),
           const Text(":", style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(width: 8),
-          // Value
-          Expanded(
-            child: Text(value ?? ""),
+          Expanded(child: Text(value ?? ""),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNotFoundText(String text) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          AnimatedBuilder(
+            animation: _animation,
+            builder: (context, child) {
+              return Transform.rotate(
+                angle: _animation.value,
+                child: child,
+              );
+            },
+            child: Image.asset('images/not_found.png', height: 100, width: 100),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            text,
+            style: const TextStyle(fontSize: 16, color: Colors.grey),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -101,9 +138,22 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
       ),
       body: ListView(
         children: [
+          // ---- AKTIF ----
           ExpansionTile(
-            title: const Text("Surat Tugas Aktif", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-            leading: Icon(Icons.circle, color: Colors.green),
+            title: Text("Surat Tugas Aktif", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF522E2E),),),
+            leading: AnimatedBuilder(
+              animation: _animation,
+              builder: (context, child) {
+                return Transform.scale(
+                  scale: 1 + _animation.value,
+                  child: child,
+                );
+              },
+              child: Icon(
+                Icons.circle,
+                color: Colors.green,
+              ),
+            ),
             children: hasActiveTask
                 ? [
               Padding(
@@ -126,7 +176,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                           children: [
                             Flexible(
                               child: Text(
-                                "${suratTugasAktif?["no_st"] ?? "-"}",
+                                suratTugasAktif?["no_st"] ?? "-",
                                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                               ),
                             ),
@@ -200,41 +250,27 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                 ),
               )
             ]
-                : [
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    Image.asset('images/not_found.png', height: 100, width: 100),
-                    const SizedBox(height: 10),
-                    const Text(
-                      "Tidak ada surat tugas aktif saat ini",
-                      style: TextStyle(fontSize: 16, color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+                : [_buildNotFoundText("Tidak ada surat tugas aktif saat ini")],
           ),
 
+          // --- TERTUNDA ---
           ExpansionTile(
-            leading: Icon(Icons.circle, color: Colors.orange),
-            title: const Text("Surat Tugas Tertunda", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            title: const Text("Surat Tugas Tertunda", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF522E2E),),),
+            leading: AnimatedBuilder(
+              animation: _animation,
+              builder: (context, child) {
+                return Transform.scale(
+                  scale: 1 + _animation.value,
+                  child: child,
+                );
+              },
+              child: Icon(
+                Icons.circle,
+                color: Colors.orange,
+              ),
+            ),
             children: suratTugasTertunda.isEmpty
-              ? [
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        Image.asset('images/not_found.png', height: 100, width: 100),
-                        const SizedBox(height: 10),
-                        const Text("Tidak ada surat tugas tertunda saat ini",
-                          style: TextStyle(fontSize: 16, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
-              ]
+              ? [_buildNotFoundText("Tidak ada surat tugas tertunda saat ini")]
             : suratTugasTertunda.map((tugas) {
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -303,25 +339,25 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
             }).toList(),
           ),
 
+          // --- SELESAI ---
           ExpansionTile(
-            leading: Icon(Icons.circle, color: Colors.blue),
-            title: const Text("Surat Tugas Selesai", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-            children: suratTugasSelesai.isEmpty
-                ? [
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    Image.asset('images/not_found.png', height: 100, width: 100),
-                    const SizedBox(height: 10),
-                    const Text("Tidak ada surat tugas selesai saat ini",
-                      style: TextStyle(fontSize: 16, color: Colors.grey),
-                    ),
-                  ],
-                ),
+            title: const Text("Surat Tugas Selesai", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF522E2E),),),
+            leading: AnimatedBuilder(
+              animation: _animation,
+              builder: (context, child) {
+                return Transform.scale(
+                  scale: 1 + _animation.value,
+                  child: child,
+                );
+              },
+              child: Icon(
+                Icons.circle,
+                color: Colors.blue,
               ),
-            ]
-          : suratTugasSelesai.map((tugas) {
+            ),
+            children: suratTugasSelesai.isEmpty
+              ? [_buildNotFoundText("Tidak ada surat tugas selesai saat ini.")]
+              : suratTugasSelesai.map((tugas) {
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -341,7 +377,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                         children: [
                           Flexible(
                             child: Text(
-                              "${tugas["no_st"] ?? "-"}",
+                              tugas["no_st"] ?? "-",
                               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                             ),
                           ),
@@ -358,7 +394,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
                                   builder: (context) => DetailLaporan(
                                     idSuratTugas: int.tryParse(tugas['id_surat_tugas'].toString()),
                                     suratTugas: tugas,
-                                    onSelesaiTugas: () {}, // tidak digunakan
+                                    onSelesaiTugas: () {},
                                     isViewOnly: true,
                                     showDetailHasil: true,
                                     customTitle: "Surat Tugas Selesai",
@@ -398,3 +434,4 @@ class _SuratTugasPageState extends State<SuratTugasPage> {
     );
   }
 }
+

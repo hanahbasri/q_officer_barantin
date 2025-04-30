@@ -16,14 +16,14 @@ class DetailLaporan extends StatefulWidget {
   final bool showDetailHasil;
 
   const DetailLaporan({
-    Key? key,
+    super.key,
     this.idSuratTugas,
     required this.suratTugas,
     required this.onSelesaiTugas,
     this.isViewOnly = false,
     this.showDetailHasil = false,
     this.customTitle,
-  }) : super(key: key);
+  });
 
   @override
   _DetailLaporanState createState() => _DetailLaporanState();
@@ -36,7 +36,6 @@ class _DetailLaporanState extends State<DetailLaporan> {
   bool _showConnectionMessage = false;
 
   PageController? _pageController;
-  Timer? _pageTimer;
 
   @override
   void initState() {
@@ -44,16 +43,6 @@ class _DetailLaporanState extends State<DetailLaporan> {
     _monitorConnection();
 
     _pageController = PageController();
-    _pageTimer = Timer.periodic(Duration(seconds: 3), (Timer timer) {
-      if (_pageController!.hasClients) {
-        int nextPage = _pageController!.page!.round() + 1;
-        _pageController!.animateToPage(
-          nextPage,
-          duration: Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
-      }
-    });
   }
 
   void _monitorConnection() {
@@ -61,7 +50,6 @@ class _DetailLaporanState extends State<DetailLaporan> {
       bool nowOffline = result == ConnectivityResult.none;
 
       if (_isOffline && !nowOffline) {
-        // Baru saja reconnect
         setState(() {
           _isOffline = false;
           _showConnectionMessage = true;
@@ -113,77 +101,12 @@ class _DetailLaporanState extends State<DetailLaporan> {
     super.dispose();
   }
 
-  void _showConfirmation(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        backgroundColor: const Color(0xFFFBF2F2),
-        contentPadding: const EdgeInsets.all(20),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.question_mark_rounded, size: 60, color: Color(0xFF522E2E)),
-            const SizedBox(height: 10),
-            Text(
-              'Konfirmasi Selesai Tugas',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.brown[800],
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              "Apakah Anda yakin ingin menyelesaikan Surat Tugas ini?",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.black87),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.grey,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Tidak'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.brown,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      widget.onSelesaiTugas();
-                      Navigator.pop(context);
-                    },
-                    child: const Text('Ya'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          widget.customTitle ?? "Riwayat Pemeriksaan", // ⬅️ kalau null, fallback ke default
+          widget.customTitle ?? "Riwayat Pemeriksaan",
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: Color(0xFF522E2E),
@@ -217,7 +140,7 @@ class _DetailLaporanState extends State<DetailLaporan> {
                         ExpansionTile(
                           title: Text(
                             "${suratTugas['no_st'] ?? '-'}",
-                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF522E2E)),
                           ),
                           children: [
                             Card(
@@ -266,7 +189,7 @@ class _DetailLaporanState extends State<DetailLaporan> {
                               }
                             },
                           );
-                        }).toList(),
+                        }),
 
                         const SizedBox(height: 24),
                         if (!widget.isViewOnly)
@@ -304,8 +227,8 @@ class _DetailLaporanState extends State<DetailLaporan> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              value?.toString() ?? '-',  // Mengecek null dan memberi default '-'
-              style: const TextStyle(color: Color(0xFF522E2E)),  // Menentukan warna teks
+              value?.toString() ?? '-',
+              style: const TextStyle(color: Color(0xFF522E2E)),
             ),
           ),
         ],
@@ -366,7 +289,7 @@ Widget buildLaporanFooter({
             child: const Text(
               "Buat Laporan Pemeriksaan",
               style: TextStyle(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.bold,
                 color: Color(0xFF522E2E),
               ),
@@ -381,58 +304,48 @@ Widget buildLaporanFooter({
               showDialog(
                 context: context,
                 builder: (ctx) => AlertDialog(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  backgroundColor: const Color(0xFFFBF2F2),
-                  contentPadding: const EdgeInsets.all(20),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  contentPadding: const EdgeInsets.all(24),
                   content: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.question_mark_rounded, size: 60, color: Color(0xFF522E2E)),
-                      const SizedBox(height: 10),
-                      Text(
+                      const Icon(Icons.question_mark_rounded, size: 48, color: Color(0xFF522E2E)),
+                      const SizedBox(height: 16),
+                      const Text(
                         'Konfirmasi Selesai Tugas',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.brown[800],
-                        ),
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF522E2E)),
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        "Apakah Anda yakin ingin menyelesaikan Surat Tugas ini?",
+                        'Apakah Anda yakin ingin menyelesaikan surat tugas ini?',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: Colors.black87),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 24),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          Expanded(
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.grey,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                              onPressed: () => Navigator.of(ctx).pop(),
-                              child: const Text('Tidak'),
+                          OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Color(0xFF522E2E),
+                              side: const BorderSide(color: Color(0xFF522E2E)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
+                            onPressed: () => Navigator.of(ctx).pop(),
+                            child: const Text('Tidak'),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.brown,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                              onPressed: () {
-                                Navigator.of(context).pop();
-                                onSelesaiTugas();
-                                Navigator.pop(context);
-                              },
-                              child: const Text('Ya'),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Color(0xFF522E2E),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
+                            onPressed: () {
+                              Navigator.of(context).pop(); // Tutup dialog
+                              onSelesaiTugas();
+                              Navigator.pop(context); // Kembali ke halaman sebelumnya
+                            },
+                            child: const Text('Ya'),
                           ),
                         ],
                       ),
@@ -440,6 +353,7 @@ Widget buildLaporanFooter({
                   ),
                 ),
               );
+
             },
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -452,7 +366,7 @@ Widget buildLaporanFooter({
             child: const Text(
               "Selesai Tugas",
               style: TextStyle(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
               ),
@@ -473,20 +387,8 @@ Widget buildHasilPeriksaCard({
 }) {
   final List<String> fotoList = (item['fotoPaths'] as String).split('|');
   final pageController = PageController();
-  Timer? timer;
 
   if (autoSlide && fotoList.length > 1) {
-    timer = Timer.periodic(Duration(seconds: 3), (timer) {
-      if (pageController.hasClients) {
-        int nextPage = pageController.page!.round() + 1;
-        if (nextPage >= fotoList.length) nextPage = 0;
-        pageController.animateToPage(
-          nextPage,
-          duration: Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
-      }
-    });
   }
 
   return GestureDetector(

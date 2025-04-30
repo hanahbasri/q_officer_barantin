@@ -37,7 +37,8 @@ class DatabaseHelper {
             lok TEXT NOT NULL,
             tgl_tugas TEXT NOT NULL,
             ttd TEXT NOT NULL,
-            hal TEXT NOT NULL
+            hal TEXT NOT NULL,
+            link TEXT NOT NULL
           )
         ''');
 
@@ -109,7 +110,8 @@ class DatabaseHelper {
           'lok': 'Kabupaten Bogor',
           'tgl_tugas': '2024-04-01',
           'ttd': 'Kepala Dinas',
-          'hal': 'Penugasan Monitoring Lapangan'
+          'hal': 'Penugasan Monitoring Lapangan',
+          'link': 'MDcxYTQwMmYtZjIwYi00NmVjLWI0ZWMtMGRkMTkxYWUxMWEzX3ZpZXc='
         });
 
         await db.insert('Surat_Tugas', {
@@ -123,7 +125,8 @@ class DatabaseHelper {
           'lok': 'Kota Bandung',
           'tgl_tugas': '2024-04-01',
           'ttd': 'Kepala Dinas',
-          'hal': 'Pengecekan Sampel'
+          'hal': 'Pengecekan Sampel',
+          'link': 'MDcxYTQwMmYtZjIwYi00NmVjLWI0ZWMtMGRkMTkxYWUxMWEzX3ZpZXc='
         });
 
         await db.insert('Lokasi', {
@@ -231,3 +234,4 @@ class DatabaseHelper {
     );
   }
 }
+

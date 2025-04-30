@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:q_officer_barantin/auth_provider.dart';
+import 'package:q_officer_barantin/services/auth_provider.dart';
 import 'package:shimmer/shimmer.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -140,10 +140,10 @@ class SplashScreenState extends State<SplashScreen> {
                   'Q-Officer',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Color(0xFF133139),
+                    color: Color(0xFFFFDDD6),
                     fontSize: 30,
-                    fontFamily: 'Inter',
-                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Urbanist',
+                    fontWeight: FontWeight.w900,
                     letterSpacing: 6,
                   ),
                 ),
