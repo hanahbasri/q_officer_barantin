@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:sqflite/sqflite.dart';
 import '../databases/db_helper.dart';
+import 'package:q_officer_barantin/models/lokasi.dart';
 
 class PeriksaLokasi extends StatefulWidget {
   final String idSuratTugas;
@@ -18,7 +18,8 @@ class _PeriksaLokasiState extends State<PeriksaLokasi> {
   GoogleMapController? _mapController;
   Set<Marker> _markers = {};
   Set<Polyline> _polylines = {};
-  Database? _database;
+  bool _isMapReady = false;
+  List<LatLng> _pendingPositions = [];
 
   @override
   void initState() {
@@ -27,7 +28,8 @@ class _PeriksaLokasiState extends State<PeriksaLokasi> {
   }
 
   Future<void> _fetchLocationsFromDb() async {
-    final locations = await DatabaseHelper().getLokasiById(widget.idSuratTugas);
+    final locationMaps = await DatabaseHelper().getLokasiById(widget.idSuratTugas);
+    final locations = locationMaps.map((map) => Lokasi.fromMap(map)).toList();
 
     List<LatLng> positions = [];
 
@@ -35,23 +37,17 @@ class _PeriksaLokasiState extends State<PeriksaLokasi> {
       _markers.clear();
       _polylines.clear();
 
-      for (var row in locations) {
-        final lat = row['latitude'] as double;
-        final lng = row['longitude'] as double;
-        final name = row['locationName'] ?? 'Tanpa Nama';
-        final detail = row['detail'] ?? '-';
-        final timestamp = row['timestamp'] ?? '-';
-
-        final position = LatLng(lat, lng);
+      for (var lokasi in locations) {
+        final position = LatLng(lokasi.latitude, lokasi.longitude);
         positions.add(position);
 
         _markers.add(
           Marker(
-            markerId: MarkerId(row['id_lokasi'].toString()),
+            markerId: MarkerId(lokasi.idLokasi),
             position: position,
             infoWindow: InfoWindow(
-              title: name,
-              snippet: "🕒 $timestamp\n📍 📄 $detail",
+              title: lokasi.namaLokasi,
+              snippet: "🕒 ${lokasi.timestamp}\n📍 ${lokasi.detail}",
               onTap: () => _openGoogleMaps(position),
             ),
           ),
@@ -68,7 +64,35 @@ class _PeriksaLokasiState extends State<PeriksaLokasi> {
           ),
         );
       }
+
+      if (_isMapReady && positions.isNotEmpty) {
+        _moveCameraToFitMarkers(positions);
+      } else {
+        _pendingPositions = positions;
+      }
     });
+  }
+
+  void _moveCameraToFitMarkers(List<LatLng> positions) {
+    if (_mapController == null) return;
+
+    LatLngBounds bounds;
+    if (positions.length == 1) {
+      bounds = LatLngBounds(
+        southwest: LatLng(positions[0].latitude - 0.01, positions[0].longitude - 0.01),
+        northeast: LatLng(positions[0].latitude + 0.01, positions[0].longitude + 0.01),
+      );
+    } else {
+      final latitudes = positions.map((p) => p.latitude);
+      final longitudes = positions.map((p) => p.longitude);
+
+      bounds = LatLngBounds(
+        southwest: LatLng(latitudes.reduce((a, b) => a < b ? a : b), longitudes.reduce((a, b) => a < b ? a : b)),
+        northeast: LatLng(latitudes.reduce((a, b) => a > b ? a : b), longitudes.reduce((a, b) => a > b ? a : b)),
+      );
+    }
+
+    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 60));
   }
 
   void _openGoogleMaps(LatLng position) async {
@@ -99,6 +123,12 @@ class _PeriksaLokasiState extends State<PeriksaLokasi> {
         polylines: _polylines,
         onMapCreated: (GoogleMapController controller) {
           _mapController = controller;
+          _isMapReady = true;
+
+          if (_pendingPositions.isNotEmpty) {
+            _moveCameraToFitMarkers(_pendingPositions);
+            _pendingPositions = [];
+          }
         },
       ),
     );

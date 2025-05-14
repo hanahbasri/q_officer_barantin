@@ -49,43 +49,84 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildDetailItem("No Surat Tugas", Text(widget.suratTugas.noSt)),
-                      _buildDetailItem("Dasar", Text(widget.suratTugas.dasar)),
-                      _buildDetailItem(
-                        "Petugas",
-                        Container(
-                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: SizedBox(
-                            height: (widget.suratTugas.petugas.length > 2 ? 150 : widget.suratTugas.petugas.length * 15),
-                            child: ListView.builder(
-                              itemCount: widget.suratTugas.petugas.length,
-                              itemBuilder: (context, index) {
-                                final petugas = widget.suratTugas.petugas[index];
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 4.0),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        petugas.namaPetugas,
-                                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                      SizedBox(height: 8),
+                      Container(
+                        height: 90,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey),
+                        ),
+                        child: Scrollbar(
+                          thumbVisibility: true,
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.vertical,
+                            child: Table(
+                              border: TableBorder.all(color: Colors.grey),
+                              columnWidths: const {
+                                0: FlexColumnWidth(), // pakai FlexColumnWidth agar fleksibel
+                                1: FlexColumnWidth(),
+                              },
+                              children: [
+                                // Header
+                                const TableRow(
+                                  decoration: BoxDecoration(color: Color(0xFFE0E0E0)),
+                                  children: [
+                                    Center(
+                                      child: Padding(
+                                        padding: EdgeInsets.all(8),
+                                        child: Text(
+                                          "Nama Petugas",
+                                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                          textAlign: TextAlign.center,
+                                        ),
                                       ),
-                                      Text(
-                                        petugas.nipPetugas,
-                                        style: TextStyle(fontSize: 10, color: Colors.black),
+                                    ),
+                                    Center(
+                                      child: Padding(
+                                        padding: EdgeInsets.all(8),
+                                        child: Text(
+                                          "NIP Petugas",
+                                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                // Isi petugas
+                                ...widget.suratTugas.petugas.map((petugas) {
+                                  return TableRow(
+                                    children: [
+                                      Center(
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(6),
+                                          child: Text(
+                                            petugas.namaPetugas,
+                                            style: const TextStyle(fontSize: 12),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ),
+                                      ),
+                                      Center(
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(6),
+                                          child: Text(
+                                            petugas.nipPetugas,
+                                            style: const TextStyle(fontSize: 12),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ),
                                       ),
                                     ],
-                                  ),
-                                );
-                              },
+                                  );
+                                }).toList(),
+                              ],
                             ),
                           ),
                         ),
                       ),
+                      const SizedBox(height: 10,),
+                      _buildDetailItem("No Surat Tugas", Text(widget.suratTugas.noSt)),
+                      _buildDetailItem("Dasar", Text(widget.suratTugas.dasar)),
                       _buildDetailItem("Tanggal Penugasan", Text(widget.suratTugas.tanggal)),
                       _buildDetailItem("Komoditas", Text(widget.suratTugas.komoditas.isNotEmpty ? widget.suratTugas.komoditas[0].namaKomoditas : "N/A")),
                       _buildDetailItem("Lokasi", Text(widget.suratTugas.lokasi.isNotEmpty ? widget.suratTugas.lokasi[0].namaLokasi : "N/A")),
