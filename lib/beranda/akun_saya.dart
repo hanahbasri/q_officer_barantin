@@ -124,12 +124,6 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
 
   void _copyToClipboard(String text) {
     Clipboard.setData(ClipboardData(text: text)).then((_) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Teks disalin ke clipboard'),
-          duration: Duration(seconds: 1),
-        ),
-      );
     });
   }
 
@@ -304,7 +298,7 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final namaLengkap = authProvider.userFullName ?? 'Nama tidak tersedia';
-    final nip = authProvider.userId ?? 'NIP tidak tersedia';
+    final nip = authProvider.userNip ?? 'NIP tidak tersedia';
     final email = authProvider.userEmail ?? 'Email tidak tersedia';
 
     return Scaffold(

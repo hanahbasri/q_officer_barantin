@@ -14,6 +14,7 @@ import 'login_screen.dart';
 import 'splash_screen.dart';
 import 'beranda/home_screen.dart';
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> initFirebaseOnce() async {
   if (Firebase.apps.isEmpty) {
@@ -62,10 +63,12 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     // Inisialisasi notifikasi setelah frame build
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      NotificationService.navigatorKey = navigatorKey;
       NotificationService.initialize(context);
     });
 
     return MaterialApp(
+      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       title: 'Q-Officer App',
       theme: ThemeData(

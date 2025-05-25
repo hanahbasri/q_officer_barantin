@@ -1,103 +1,733 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'dart:io';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:dropdown_search/dropdown_search.dart';
 import '../databases/db_helper.dart';
-import 'detail_laporan.dart';
+import 'package:uuid/uuid.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:q_officer_barantin/models/st_lengkap.dart';
+import 'package:q_officer_barantin/models/hasil_pemeriksaan.dart';
+import 'package:dropdown_search/dropdown_search.dart';
+import 'package:q_officer_barantin/services/surat_tugas_service.dart';
+import 'package:q_officer_barantin/models/lokasi.dart';
+import 'package:q_officer_barantin/models/komoditas.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:provider/provider.dart';
+import '../services/auth_provider.dart';
 
 class FormPeriksa extends StatefulWidget {
-  final int? idSuratTugas;
-  final Map<String, dynamic> suratTugas;
+  final StLengkap suratTugas;
+  final String idSuratTugas;
   final VoidCallback onSelesaiTugas;
+  final String userNip;
 
   const FormPeriksa({
     super.key,
-    this.idSuratTugas,
+    required this.idSuratTugas,
     required this.suratTugas,
     required this.onSelesaiTugas,
+    required this.userNip,
   });
 
   @override
-  State<FormPeriksa> createState() => _FormPeriksaState();
+  _FormPeriksaState createState() => _FormPeriksaState();
 }
 
-class _FormPeriksaState extends State<FormPeriksa> with TickerProviderStateMixin {
+class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
+  final uuid = Uuid();
+  late String idPemeriksaan;
+  List<Lokasi> lokasiList = [];
+  List<Komoditas> komoditasList = [];
+  List<Uint8List> _compressedPhotosForServer = [];
+  bool _formSubmitted = false;
+  bool _isSubmitting = false;
+
+  late AnimationController _searchController;
+
   String? selectedTarget;
   String? selectedTemuan;
-  String? selectedLokasi;
-  String? selectedKomoditas;
-  List<XFile>? _images = [];
+  String? selectedLokasiId;
+  String? selectedLokasiName;
+  String? selectedKomoditasId;
+  String? selectedKomoditasName;
+  double? latitude;
+  double? longitude;
+  Position? devicePosition;
+  String? waktuAmbilPosisi;
+
   final ImagePicker _picker = ImagePicker();
   final TextEditingController _metodeController = TextEditingController();
   final TextEditingController _catatanController = TextEditingController();
 
-  late AnimationController _searchController;
-  late Animation<Offset> _searchOffset;
+  List<Uint8List> _uploadedPhotos = [];
+  List<XFile> _pickedXFiles = [];
+
+  final Map<String, bool> _fieldErrors = {
+    'lokasi': false,
+    'target': false,
+    'metode': false,
+    'temuan': false,
+    'komoditas': false,
+    'foto': false,
+  };
+
+  List<String> targetAndTemuanList = [];
+  bool _isLoadingDropdownData = true;
 
   @override
   void initState() {
     super.initState();
+    idPemeriksaan = uuid.v4();
+    lokasiList = widget.suratTugas.lokasi;
+    komoditasList = widget.suratTugas.komoditas;
+
+    if (lokasiList.isNotEmpty && selectedLokasiName == null) {
+      selectedLokasiName = lokasiList.first.namaLokasi;
+      selectedLokasiId = lokasiList.first.idLokasi;
+    }
+    if (komoditasList.isNotEmpty && selectedKomoditasName == null) {
+      selectedKomoditasName = komoditasList.first.namaKomoditas;
+      selectedKomoditasId = komoditasList.first.idKomoditas;
+    }
+
+    if (kDebugMode) {
+      print('DEBUG: jenisKarantina in FormPeriksa initState: ${widget.suratTugas.jenisKarantina}');
+    }
+
+    _loadTargetAndTemuanList();
+    ambilPosisiAwal();
+
     _searchController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
     )..repeat(reverse: true);
+  }
 
-    _searchOffset = Tween<Offset>(
-      begin: Offset.zero,
-      end: const Offset(0.05, 0),
-    ).animate(CurvedAnimation(
-      parent: _searchController,
-      curve: Curves.easeInOut,
-    ));
+  Future<void> _loadTargetAndTemuanList() async {
+    setState(() {
+      _isLoadingDropdownData = true;
+    });
+    try {
+      final data = await SuratTugasService.getTargetUjiData(
+          widget.suratTugas.jenisKarantina, 'uraian');
+      if (mounted) {
+        setState(() {
+          targetAndTemuanList = data;
+          if (targetAndTemuanList.isNotEmpty) {
+            selectedTarget ??= targetAndTemuanList.first;
+            selectedTemuan ??= targetAndTemuanList.first;
+          }
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error loading target and temuan list: $e");
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingDropdownData = false;
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _metodeController.dispose();
+    _catatanController.dispose();
     super.dispose();
   }
 
+  Future<bool> requestPermission() async {
+    final status = await Permission.location.request();
+    return status.isGranted;
+  }
 
-  Future<void> pickImages(BuildContext context, ImageSource source, {bool isMulti = false}) async {
-    const maxTotalSizeInBytes = 2 * 1024 * 1024; // 2MB
-    List<XFile> tempImages = [];
-
-    if (isMulti) {
-      final List<XFile> selectedImages = await _picker.pickMultiImage();
-      if (selectedImages.isNotEmpty) {
-        tempImages = [...?_images, ...selectedImages];
-      } else {
-        return;
-      }
-    } else {
-      final XFile? singleImage = await _picker.pickImage(source: source, imageQuality: 15);
-      if (singleImage != null) {
-        tempImages = [...?_images, singleImage];
-      } else {
-        return;
-      }
-    }
-
-    int totalSize = 0;
-    for (var image in tempImages) {
-      final file = File(image.path);
-      totalSize += await file.length();
-    }
-
-    if (totalSize > maxTotalSizeInBytes) {
-      if (!context.mounted) return;
+  Future<void> ambilPosisiAwal() async {
+    final granted = await requestPermission();
+    if (!granted) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Total ukuran gambar melebihi 2MB'),
-        ),
+            content: Text("Izin lokasi diperlukan untuk mengambil posisi")),
       );
       return;
     }
 
+    try {
+      final db = DatabaseHelper();
+      final posisi = await db.getLocation();
+      if (posisi != null) {
+        setState(() {
+          devicePosition = posisi;
+          latitude = posisi.latitude;
+          longitude = posisi.longitude;
+          waktuAmbilPosisi = DateTime.now().toIso8601String();
+        });
+
+        if (!mounted) return;
+        if (kDebugMode) {
+          print("Lokasi berhasil: lat=$latitude, long=$longitude");
+        }
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("❗ Gagal mengambil lokasi")),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e")),
+      );
+    }
+  }
+
+  // MODIFIED: Fungsi kompresi gambar yang lebih agresif lagi
+  Future<Uint8List> _compressImageProper(XFile imageFile) async {
+    try {
+      if (kDebugMode) {
+        final originalBytes = await imageFile.readAsBytes();
+        print("🔧 Mulai kompresi gambar - Ukuran awal: ${originalBytes.length} bytes (${(originalBytes.length / 1024).toStringAsFixed(2)} KB)");
+      }
+
+      // Target ukuran per foto sebelum di-encode ke Base64.
+      // Jika total payload server sekitar 100KB, dan kita punya 2 foto,
+      // maka setiap foto (setelah base64) idealnya < 45KB.
+      // Sebelum base64, berarti sekitar 45KB / 1.33 = ~33KB.
+      // Kita set target lebih rendah untuk memberi ruang, misal 25KB.
+      const int targetPerImageCompressedSize = 25 * 1024; // Target 25KB per foto (compressed)
+
+      // Percobaan Kompresi Pertama
+      Uint8List? compressedBytes = await FlutterImageCompress.compressWithFile(
+        imageFile.path,
+        minWidth: 640,  // Lebih kecil
+        minHeight: 480, // Lebih kecil
+        quality: 35,    // Kualitas lebih rendah
+        format: CompressFormat.jpeg,
+      );
+
+      if (compressedBytes == null) {
+        throw Exception("Gagal kompresi gambar pada percobaan pertama");
+      }
+
+      // Jika masih terlalu besar, coba kompresi lebih agresif
+      if (compressedBytes.length > targetPerImageCompressedSize) {
+        if (kDebugMode) {
+          print("⚠️ Foto masih terlalu besar (${compressedBytes.length} bytes), mencoba kompresi lebih agresif.");
+        }
+        final moreCompressed = await FlutterImageCompress.compressWithFile(
+          imageFile.path,
+          minWidth: 500,
+          minHeight: 375,
+          quality: 20, // Kualitas sangat rendah
+          format: CompressFormat.jpeg,
+        );
+
+        if (moreCompressed != null) {
+          compressedBytes = moreCompressed;
+        } else {
+          throw Exception("Gagal kompresi gambar pada percobaan kedua");
+        }
+      }
+
+      // Percobaan terakhir jika masih terlalu besar, kompresi paling agresif
+      if (compressedBytes.length > targetPerImageCompressedSize) {
+        if (kDebugMode) {
+          print("⚠️ Foto masih sangat besar (${compressedBytes.length} bytes), mencoba kompresi paling agresif.");
+        }
+        final mostCompressed = await FlutterImageCompress.compressWithFile(
+          imageFile.path,
+          minWidth: 400,
+          minHeight: 300,
+          quality: 15,        // Kualitas terendah yang masih bisa diterima
+          format: CompressFormat.jpeg,
+        );
+        if (mostCompressed != null) {
+          compressedBytes = mostCompressed;
+        } else {
+          throw Exception("Gagal kompresi gambar pada percobaan ketiga");
+        }
+      }
+
+      if (kDebugMode) {
+        print("✅ Kompresi selesai - Ukuran akhir: ${compressedBytes.length} bytes (${(compressedBytes.length / 1024).toStringAsFixed(2)} KB)");
+      }
+      return compressedBytes;
+
+    } catch (e) {
+      if (kDebugMode) {
+        print("❌ Error saat kompresi: $e");
+      }
+      // Jika semua gagal, kembalikan original (meskipun akan menyebabkan payload besar)
+      // atau throw error agar user tahu. Untuk sekarang, kembalikan original.
+      return await imageFile.readAsBytes();
+    }
+  }
+
+  Future<Uint8List> _fallbackCompress(XFile imageFile) async {
+    // Fallback ini kurang efektif, sebaiknya andalkan kompresi utama.
+    // Untuk sekarang, kita biarkan, tapi idealnya ini diubah.
+    try {
+      final bytes = await imageFile.readAsBytes();
+      if (bytes.length <= 25 * 1024) return bytes; // Target 25KB
+
+      final compressedXFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 10, // Sangat rendah
+        maxWidth: 400,
+        maxHeight: 300,
+      );
+
+      if (compressedXFile != null) {
+        final compressedBytes = await compressedXFile.readAsBytes();
+        if (kDebugMode) print("🔄 Fallback compression used - Size: ${compressedBytes.length}");
+        return compressedBytes;
+      }
+      if (kDebugMode) print("⚠️ Fallback: Mengembalikan gambar asli karena pickImage gagal.");
+      return bytes;
+    } catch (e) {
+      if (kDebugMode) print("❌ Fallback compression error: $e");
+      return await imageFile.readAsBytes(); // Pilihan terakhir
+    }
+  }
+
+
+  Future<Map<String, dynamic>> _processImageForSubmission(XFile imageFile) async {
+    try {
+      // Untuk display, kita bisa menggunakan kompresi yang tidak terlalu agresif
+      final displayBytes = await FlutterImageCompress.compressWithFile(
+        imageFile.path,
+        minWidth: 800,
+        minHeight: 600,
+        quality: 70,   // Kualitas cukup baik untuk display
+        format: CompressFormat.jpeg,
+      );
+
+      final bytesForDisplay = displayBytes ?? await imageFile.readAsBytes();
+
+      // Kompresi agresif untuk server
+      final compressedBytesForServer = await _compressImageProper(imageFile);
+
+      return {
+        'display': bytesForDisplay,
+        'compressed': compressedBytesForServer,
+        'success': true,
+      };
+    } catch (e) {
+      if (kDebugMode) {
+        print("❌ Error processing image: $e");
+      }
+      return {
+        'success': false,
+        'error': e.toString(),
+      };
+    }
+  }
+
+  Future<void> pickImages(BuildContext context, ImageSource source, {bool isMulti = false}) async {
+    try {
+      List<XFile> tempXFiles = [];
+
+      if (isMulti) {
+        final List<XFile> selectedImages = await _picker.pickMultiImage(imageQuality: 70); // Kualitas awal sedang
+        if (selectedImages.isEmpty) return;
+        tempXFiles = selectedImages;
+      } else {
+        final XFile? singleImage = await _picker.pickImage(
+          source: source,
+          imageQuality: 70, // Kualitas awal sedang
+        );
+        if (singleImage == null) return;
+        tempXFiles = [singleImage];
+      }
+
+      if (kDebugMode) {
+        print("📷 Memproses ${tempXFiles.length} foto yang dipilih");
+      }
+
+      List<Uint8List> currentUploadedPhotosForDisplay = List.from(_uploadedPhotos);
+      List<Uint8List> currentCompressedPhotosForServer = List.from(_compressedPhotosForServer);
+      List<XFile> currentPickedXFiles = List.from(_pickedXFiles);
+
+
+      for (var image in tempXFiles) {
+        try {
+          final result = await _processImageForSubmission(image);
+
+          if (result['success'] == true) {
+            currentUploadedPhotosForDisplay.add(result['display']);
+            currentCompressedPhotosForServer.add(result['compressed']);
+            currentPickedXFiles.add(image);
+
+            if (kDebugMode) {
+              print("✅ Foto berhasil diproses:");
+              print("   - Ukuran untuk display: ${result['display'].length} bytes");
+              print("   - Ukuran untuk server: ${result['compressed'].length} bytes");
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print("❌ Error memproses foto: $e");
+          }
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _uploadedPhotos = currentUploadedPhotosForDisplay;
+          _compressedPhotosForServer = currentCompressedPhotosForServer;
+          _pickedXFiles = currentPickedXFiles;
+
+          if (_formSubmitted) {
+            _updateFieldError('foto', _uploadedPhotos.isEmpty);
+          }
+        });
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ ${currentUploadedPhotosForDisplay.length} foto berhasil diproses'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+
+    } catch (e) {
+      if (kDebugMode) {
+        print("❌ Error picking images: $e");
+      }
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Error memilih foto: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // MODIFIED: Validasi ukuran payload
+  bool _validatePayloadSize() {
+    int totalCompressedSize = 0;
+    for (var photo in _compressedPhotosForServer) {
+      totalCompressedSize += photo.length;
+    }
+
+    int estimatedBase64Size = (totalCompressedSize * 1.33).round();
+    int estimatedJsonOverhead = 2000;
+    int totalEstimatedPayload = estimatedBase64Size + estimatedJsonOverhead;
+
+    if (kDebugMode) {
+      print("🔍 Validasi ukuran payload untuk server:");
+      print("   - Jumlah foto: ${_compressedPhotosForServer.length}");
+      print("   - Ukuran total foto compressed (untuk server): $totalCompressedSize bytes (${(totalCompressedSize / 1024).toStringAsFixed(2)} KB)");
+      print("   - Estimasi base64: $estimatedBase64Size bytes (${(estimatedBase64Size / 1024).toStringAsFixed(2)} KB)");
+      print("   - Total estimasi payload: $totalEstimatedPayload bytes (${(totalEstimatedPayload / 1024).toStringAsFixed(2)} KB)");
+    }
+
+    // Batas payload server, misal 100KB.
+    const maxPayloadSize = 100 * 1024; // 100KB
+
+    if (totalEstimatedPayload > maxPayloadSize) {
+      if (kDebugMode) {
+        print("🚫 Payload terdeteksi terlalu besar ($totalEstimatedPayload bytes) melebihi batas ($maxPayloadSize bytes).");
+      }
+      return false;
+    }
+    return true;
+  }
+
+  void _updateFieldError(String field, bool hasError) {
     setState(() {
-      _images = tempImages;
+      _fieldErrors[field] = hasError;
     });
+  }
+
+  void deleteImage(int index) {
+    if (index >= 0 && index < _uploadedPhotos.length) {
+      setState(() {
+        _uploadedPhotos.removeAt(index);
+        _pickedXFiles.removeAt(index);
+        if (index < _compressedPhotosForServer.length) {
+          _compressedPhotosForServer.removeAt(index);
+        }
+        if (_formSubmitted) {
+          _updateFieldError('foto', _uploadedPhotos.isEmpty);
+        }
+      });
+    }
+  }
+
+  void _resetForm() {
+    _formKey.currentState!.reset();
+    _metodeController.clear();
+    _catatanController.clear();
+    setState(() {
+      selectedTarget = targetAndTemuanList.isNotEmpty ? targetAndTemuanList.first : null;
+      selectedTemuan = targetAndTemuanList.isNotEmpty ? targetAndTemuanList.first : null;
+      selectedLokasiName = lokasiList.isNotEmpty ? lokasiList.first.namaLokasi : null;
+      selectedLokasiId = lokasiList.isNotEmpty ? lokasiList.first.idLokasi : null;
+      selectedKomoditasName = komoditasList.isNotEmpty ? komoditasList.first.namaKomoditas : null;
+      selectedKomoditasId = komoditasList.isNotEmpty ? komoditasList.first.idKomoditas : null;
+
+      _uploadedPhotos.clear();
+      _pickedXFiles.clear();
+      _compressedPhotosForServer.clear();
+      _formSubmitted = false;
+      idPemeriksaan = uuid.v4();
+    });
+    ambilPosisiAwal();
+  }
+
+  Future<void> _showCustomDialog(BuildContext context, String title, String message, IconData icon, Color iconColor) async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false, // User must tap button!
+      builder: (ctx) {
+        return Center(
+          child: TweenAnimationBuilder(
+            duration: const Duration(milliseconds: 600),
+            tween: Tween<double>(begin: 0.0, end: 1.0),
+            curve: Curves.elasticOut,
+            builder: (context, value, child) {
+              return Transform.scale(
+                scale: value,
+                child: Material(
+                  color: Colors.transparent,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutBack,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(15),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 10,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    width: MediaQuery.of(ctx).size.width * 0.85,
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(ctx).size.height * 0.7,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TweenAnimationBuilder(
+                            duration: const Duration(milliseconds: 1000),
+                            tween: Tween<double>(begin: 0.0, end: 1.0),
+                            curve: Curves.bounceOut,
+                            builder: (context, value, child) {
+                              return Transform.scale(
+                                scale: value,
+                                child: Icon(icon, size: 70, color: iconColor),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 15),
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF522E2E),
+                              decorationThickness: 0,
+                              decoration: TextDecoration.none,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            message,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w400,
+                              color: Color(0xFF333333),
+                              decorationThickness: 0,
+                              decoration: TextDecoration.none,
+                            ),
+                            overflow: TextOverflow.visible,
+                            softWrap: true,
+                          ),
+                          const SizedBox(height: 25),
+                          SizedBox(
+                            width: 150,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF522E2E),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                              ),
+                              onPressed: () => Navigator.of(ctx).pop(),
+                              child: const Text(
+                                "OK",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  void _handleSubmit(BuildContext context) async {
+    setState(() {
+      _formSubmitted = true;
+      _updateFieldError('lokasi', selectedLokasiId == null);
+      _updateFieldError('target', selectedTarget == null);
+      _updateFieldError('metode', _metodeController.text.isEmpty);
+      _updateFieldError('temuan', selectedTemuan == null);
+      _updateFieldError('komoditas', selectedKomoditasId == null);
+      _updateFieldError('foto', _compressedPhotosForServer.isEmpty);
+    });
+
+    if (!_formKey.currentState!.validate() ||
+        selectedLokasiId == null ||
+        selectedTarget == null ||
+        selectedTemuan == null ||
+        selectedKomoditasId == null ||
+        _compressedPhotosForServer.isEmpty) {
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Harap lengkapi seluruh isian pada form pemeriksaan!")),
+        );
+      }
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final userNip = authProvider.userNip ?? widget.userNip;
+
+    if (kDebugMode) {
+      print('🔍 DEBUG - userNip yang akan digunakan untuk submit: "$userNip"');
+    }
+
+    if (userNip.isEmpty) {
+      setState(() {
+        _isSubmitting = false;
+      });
+      if (mounted) {
+        await _showCustomDialog(
+          context,
+          "Error Autentikasi",
+          "NIP pengguna tidak ditemukan. Silakan login ulang.",
+          Icons.error_outline_rounded,
+          Colors.red.shade700,
+        );
+      }
+      return;
+    }
+
+    final hasil = HasilPemeriksaan(
+      idPemeriksaan: idPemeriksaan,
+      idSuratTugas: widget.idSuratTugas,
+      idKomoditas: selectedKomoditasId!,
+      namaKomoditas: selectedKomoditasName!,
+      idLokasi: selectedLokasiId!,
+      namaLokasi: selectedLokasiName!,
+      lat: latitude?.toString() ?? '0.0',
+      long: longitude?.toString() ?? '0.0',
+      target: selectedTarget!,
+      metode: _metodeController.text,
+      temuan: selectedTemuan!,
+      catatan: _catatanController.text,
+      tanggal: waktuAmbilPosisi ?? DateTime.now().toIso8601String(),
+      syncData: 0, // Selalu 0, belum disinkronkan
+    );
+
+    final dbHelper = DatabaseHelper();
+
+    try {
+      // SELALU simpan lokal dulu, tidak peduli online/offline
+      if (kDebugMode) {
+        print("💾 Menyimpan hasil pemeriksaan ke database lokal...");
+      }
+
+      // Simpan hasil pemeriksaan ke database lokal (syncdata = 0)
+      final unsyncedHasil = hasil.toMap();
+      await dbHelper.insert('Hasil_Pemeriksaan', unsyncedHasil);
+
+      // Simpan foto ke database lokal untuk display
+      for (var photoBytes in _uploadedPhotos) {
+        await dbHelper.getImagetoDatabase(photoBytes, idPemeriksaan);
+      }
+
+      // Update status surat tugas menjadi 'dikirim' (bukan 'selesai')
+      // Status 'dikirim' menandakan sudah ada hasil pemeriksaan tapi belum disinkronkan ke server
+      await dbHelper.updateStatusTugas(widget.idSuratTugas, 'dikirim');
+
+      if (kDebugMode) {
+        print("✅ Hasil pemeriksaan berhasil disimpan lokal dengan status 'dikirim'");
+      }
+
+      setState(() {
+        _isSubmitting = false;
+      });
+
+      _resetForm();
+
+      if (mounted) {
+        await _showCustomDialog(
+          context,
+          "Berhasil Disimpan",
+          "Hasil pemeriksaan telah disimpan. Anda dapat melihat riwayat pemeriksaan dan melakukan sinkronisasi data ke server melalui tombol 'Sinkronisasi Data'.",
+          Icons.check_circle_outline,
+            Color(0xFF522E2E),
+        );
+
+        // Kembali ke halaman sebelumnya dengan hasil true untuk refresh data
+        Navigator.of(context).pop(true);
+      }
+
+    } catch (e) {
+      if (kDebugMode) {
+        print("❌ Error saat menyimpan hasil pemeriksaan: $e");
+      }
+
+      setState(() {
+        _isSubmitting = false;
+      });
+
+      if (mounted) {
+        await _showCustomDialog(
+          context,
+          "Gagal Menyimpan",
+          "Terjadi kesalahan saat menyimpan hasil pemeriksaan: ${e.toString()}",
+          Icons.error_outline_rounded,
+          Colors.red.shade700,
+        );
+      }
+    }
   }
 
   void _showImagePicker(BuildContext context) {
@@ -106,517 +736,558 @@ class _FormPeriksaState extends State<FormPeriksa> with TickerProviderStateMixin
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (BuildContext ctx) => Wrap(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Pilih Sumber Foto',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      builder: (BuildContext ctx) =>
+          Wrap(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildImageSourceOption(
-                      icon: Icons.camera_alt,
-                      label: "Kamera",
-                      onTap: () {
-                        Navigator.pop(context);
-                        pickImages(context, ImageSource.camera);
-
-                      },
+                    const Text(
+                      'Pilih Sumber Foto',
+                      style: TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold),
                     ),
-                    _buildImageSourceOption(
-                      icon: Icons.photo_library,
-                      label: "Galeri",
-                      onTap: () {
-                        Navigator.pop(context);
-                        pickImages(context, ImageSource.gallery, isMulti: true);
-                      },
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildImageSourceOption(
+                          icon: Icons.camera_alt,
+                          label: "Kamera",
+                          onTap: () {
+                            Navigator.pop(context);
+                            pickImages(context, ImageSource.camera);
+                          },
+                        ),
+                        _buildImageSourceOption(
+                          icon: Icons.photo_library,
+                          label: "Galeri",
+                          onTap: () {
+                            Navigator.pop(context);
+                            pickImages(
+                                context, ImageSource.gallery, isMulti: true);
+                          },
+                        ),
+                      ],
                     ),
                   ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showSuccessPopup(BuildContext context) {
-    return showDialog(
-      context: context,
-      builder: (BuildContext ctx) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          backgroundColor: Color(0xFFFBF2F2),
-          contentPadding: EdgeInsets.all(20),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.check_circle, size: 60, color: Color(0xFF522E2E)),
-              SizedBox(height: 10),
-              Text(
-                "Berhasil Dikirim",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF522E2E)),
-              ),
-              SizedBox(height: 8),
-              Text(
-                "Hasil pemeriksaan kesehatan telah berhasil dikirim!",
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400),
-              ),
-              SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DetailLaporan(
-                          idSuratTugas: widget.idSuratTugas ?? widget.suratTugas['id_surat_tugas'] as int,
-                          suratTugas: widget.suratTugas,
-                          onSelesaiTugas: widget.onSelesaiTugas,
-                        ),
-                      ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF522E2E),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  child: const Text("Periksa Hasil", style: TextStyle(color: Colors.white)),
-                ),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => FormPeriksa(
-                          idSuratTugas: widget.idSuratTugas,
-                          suratTugas: widget.suratTugas,
-                          onSelesaiTugas: widget.onSelesaiTugas,
-                        ),
-                      ),
-                    );
-                  },
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFEC559),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                    side: BorderSide.none,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  child: const Text("Isi Form Kembali", style: TextStyle(color: Color(0xFF522E2E))),
                 ),
               ),
             ],
           ),
-        );
-      },
-
     );
   }
 
-  void _handleSubmit(BuildContext context) async {
-    if (_formKey.currentState!.validate() &&
-        selectedLokasi != null &&
-        selectedTarget != null &&
-        selectedTemuan != null &&
-        selectedKomoditas != null &&
-        _images!.isNotEmpty) {
-
-      final fotoPaths = _images!.map((e) => e.path).toList().join('|');
-      final now = DateTime.now();
-
-      final data = {
-        'id_surat_tugas': widget.idSuratTugas ?? widget.suratTugas['id_surat_tugas'] as int,
-        'lokasi': selectedLokasi!,
-        'target': selectedTarget!,
-        'metode': _metodeController.text,
-        'temuan': selectedTemuan!,
-        'komoditas': selectedKomoditas!,
-        'catatan': _catatanController.text,
-        'fotoPaths': fotoPaths,
-        'tgl_periksa': now.toIso8601String(),
-      };
-
-      await DatabaseHelper().insertPeriksa(data);
-
-      // Reset form dan state setelah berhasil simpan
-      _formKey.currentState!.reset();
-      _metodeController.clear();
-      _catatanController.clear();
-      setState(() {
-        selectedLokasi = null;
-        selectedTarget = null;
-        selectedTemuan = null;
-        selectedKomoditas = null;
-        _images = [];
-      });
-
-      await _showSuccessPopup(context);
-      Navigator.pop(context, true);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Harap lengkapi seluruh isian laporan pemeriksaan!")),
-      );
-    }
+  // Function to create consistent input decoration
+  InputDecoration _getInputDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      enabledBorder: OutlineInputBorder(
+        borderSide: const BorderSide(color: Color(0xFF522E2E), width: 1),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderSide: const BorderSide(color: Color(0xFF522E2E), width: 1),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderSide: const BorderSide(color: Colors.red, width: 1),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderSide: const BorderSide(color: Colors.red, width: 1),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      border: OutlineInputBorder(
+        borderSide: const BorderSide(color: Color(0xFF522E2E), width: 1),
+        borderRadius: BorderRadius.circular(5),
+      ),
+    );
   }
 
+  // Custom validator that only shows error if form was submitted
+  String? _customValidator(String? value, String fieldName) {
+    bool hasError = _formSubmitted && (value == null || value.isEmpty);
+    _updateFieldError(fieldName, hasError);
+    return hasError ? "Wajib diisi" : null;
+  }
+
+  // Searchable dropdown widget
+  Widget _buildSearchableDropdown<T>({
+    required String title,
+    required List<T> items,
+    required String Function(T) itemAsString,
+    required T? selectedItem,
+    required String hint,
+    required Function(T?) onChanged,
+    required bool isRequired,
+    required String fieldName,
+    String? Function(T?)? validator,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        DropdownSearch<T>(
+          asyncItems: (filter) => Future.value(items),
+          itemAsString: itemAsString,
+          selectedItem: selectedItem,
+          onChanged: (value) {
+            onChanged(value);
+            if (_formSubmitted) {
+              setState(() {
+                _fieldErrors[fieldName] = value == null;
+              });
+            }
+          },
+          dropdownButtonProps: const DropdownButtonProps(
+            icon: Icon(Icons.arrow_drop_down, color: Color(0xFF522E2E)),
+          ),
+          dropdownDecoratorProps: DropDownDecoratorProps(
+            baseStyle: const TextStyle(fontSize: 14),
+            dropdownSearchDecoration: InputDecoration(
+              hintText: hint,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              border: OutlineInputBorder(
+                borderSide: const BorderSide(color: Color(0xFF522E2E), width: 1),
+                borderRadius: BorderRadius.circular(5),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(
+                    color: _fieldErrors[fieldName] == true ? Colors.red : const Color(0xFF522E2E),
+                    width: 1
+                ),
+                borderRadius: BorderRadius.circular(5),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(
+                    color: _fieldErrors[fieldName] == true ? Colors.red : const Color(0xFF522E2E),
+                    width: 1
+                ),
+                borderRadius: BorderRadius.circular(5),
+              ),
+              errorText: _fieldErrors[fieldName] == true ? "Wajib diisi" : null,
+            ),
+          ),
+          popupProps: PopupProps.menu(
+            showSearchBox: true,
+            searchFieldProps: TextFieldProps(
+              decoration: InputDecoration(
+                hintText: 'Cari $title...',
+                prefixIcon: AnimatedBuilder(
+                  animation: _searchController,
+                  builder: (context, child) {
+                    return Transform.translate(
+                      offset: Offset(_searchController.value * 2, 0),
+                      child: const Icon(Icons.search, color: Color(0xFF522E2E)),
+                    );
+                  },
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+            menuProps: MenuProps(
+                backgroundColor: Colors.white,
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  side: BorderSide(color: Colors.grey[400]!, width: 1),
+                  borderRadius: BorderRadius.circular(8),
+                )
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text("Form Pemeriksaan", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Color(0xFF522E2E),
-        foregroundColor: Colors.white,
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text("Lokasi", style: TextStyle(fontWeight: FontWeight.bold)),
-              DropdownSearch<String>(
-                items: (filter, _) => ["Jawa Barat", "Gudang B", "Kantor Pusat", "Cabang Jakarta", "Cabang Bandung"],
-                onChanged: (value) => setState(() => selectedLokasi = value),
-                selectedItem: selectedLokasi,
-                validator: (value) => selectedLokasi == null ? "Wajib diisi" : null,
-                decoratorProps: DropDownDecoratorProps(
-                    decoration: InputDecoration(
-                      enabledBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      border: OutlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                    )
-                ),
-                popupProps: PopupProps.dialog(
-                  showSearchBox: true,
-                  dialogProps: DialogProps(
-                    backgroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  ),
-                  searchFieldProps: TextFieldProps(
-                    decoration: InputDecoration(
-                      prefixIcon: _buildAnimatedSearchIcon(),
-                      hintText: 'Cari...',
-                      filled: true,
-                      fillColor: Colors.grey[100],
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Color(0xFF522E2E)),
+      appBar: AppBar(title: const Text("Form Pemeriksaan")),
+      body: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Form(
+              key: _formKey,
+              child: ListView(
+                children: [
+                  // Lokasi searchable dropdown
+                  _buildSearchableDropdown<Lokasi>(
+                    title: "Lokasi",
+                    items: lokasiList,
+                    itemAsString: (lok) => lok.namaLokasi,
+                    selectedItem: lokasiList.firstWhere(
+                          (element) => element.idLokasi == selectedLokasiId,
+                      orElse: () => lokasiList.isNotEmpty ? lokasiList.first : Lokasi(
+                        idLokasi: '', idSuratTugas: '', namaLokasi: '', latitude: 0, longitude: 0, detail: '', timestamp: '',
                       ),
                     ),
+                    hint: "Pilih Lokasi",
+                    fieldName: 'lokasi',
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() {
+                        selectedLokasiName = value.namaLokasi;
+                        selectedLokasiId = value.idLokasi;
+                        if (_formSubmitted) {
+                          _updateFieldError('lokasi', false);
+                        }
+                      });
+                    },
+                    isRequired: true,
                   ),
-                ),
-              ),
-              SizedBox(height: 16),
 
-              Text("Target / Sasaran", style: TextStyle(fontWeight: FontWeight.bold)),
-              DropdownSearch<String>(
-                items: (filter, _) => ["Gudang A", "Gudang B", "Kantor Pusat", "Cabang Jakarta", "Cabang Bandung"],
-                onChanged: (value) => setState(() => selectedTarget = value),
-                selectedItem: selectedTarget,
-                validator: (value) => selectedTarget == null ? "Wajib diisi" : null,
-                decoratorProps: DropDownDecoratorProps(
-                    decoration: InputDecoration(
-                      enabledBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      border: OutlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                    )
-                ),
-                popupProps: PopupProps.dialog(
-                  showSearchBox: true,
-                  dialogProps: DialogProps(
-                    backgroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  ),
-                  searchFieldProps: TextFieldProps(
-                    decoration: InputDecoration(
-                      prefixIcon: _buildAnimatedSearchIcon(),
-                      hintText: 'Cari...',
-                      filled: true,
-                      fillColor: Colors.grey[100],
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Color(0xFF522E2E)),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              SizedBox(height: 16),
-
-              Text("Metode", style: TextStyle(fontWeight: FontWeight.bold)),
-              TextFormField(
-                controller: _metodeController,
-                validator: (value) => value!.isEmpty ? "Wajib diisi" : null,
-                  decoration: InputDecoration(
-                    enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    border: OutlineInputBorder(
-                      borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
-                      borderRadius: BorderRadius.circular(5),
-                    ),
+                  // Target searchable dropdown
+                  _isLoadingDropdownData
+                      ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text("Target / Sasaran", style: TextStyle(fontWeight: FontWeight.bold)),
+                      SizedBox(height: 8),
+                      Center(child: CircularProgressIndicator()),
+                      SizedBox(height: 16),
+                    ],
                   )
-              ),
-              SizedBox(height: 16),
-
-              Text("Temuan", style: TextStyle(fontWeight: FontWeight.bold)),
-              DropdownSearch<String>(
-                items: (filter, _) => ["Kerusakan Barang", "Kelebihan Stok", "Kekurangan Stok", "Barang Kadaluarsa"],
-                onChanged: (value) => setState(() => selectedTemuan = value),
-                selectedItem: selectedTemuan,
-                validator: (value) => selectedTemuan == null ? "Wajib diisi" : null,
-                decoratorProps: DropDownDecoratorProps(
-                    decoration: InputDecoration(
-                      enabledBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
-                        borderRadius: BorderRadius.circular(5),
+                      : (targetAndTemuanList.isEmpty
+                      ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text("Target / Sasaran", style: TextStyle(fontWeight: FontWeight.bold)),
+                      SizedBox(height: 8),
+                      Text(
+                        "Tidak ada data target yang tersedia untuk jenis karantina ini.",
+                        style: TextStyle(color: Colors.red, fontSize: 12),
                       ),
-                      focusedBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      border: OutlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                    )
-                ),
-                popupProps: PopupProps.dialog(
-                  showSearchBox: true,
-                  dialogProps: DialogProps(
-                    backgroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  ),
-                  searchFieldProps: TextFieldProps(
-                    decoration: InputDecoration(
-                      prefixIcon: _buildAnimatedSearchIcon(),
-                      hintText: 'Cari...',
-                      filled: true,
-                      fillColor: Colors.grey[100],
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Color(0xFF522E2E)),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              SizedBox(height: 16),
-
-              Text("Komoditas", style: TextStyle(fontWeight: FontWeight.bold)),
-              DropdownSearch<String>(
-                items: (filter, _) => ["Hewan", "Ikan", "Tumbuhan"],
-                onChanged: (value) => setState(() => selectedKomoditas = value),
-                selectedItem: selectedKomoditas,
-                validator: (value) => selectedKomoditas == null ? "Wajib diisi" : null,
-                decoratorProps: DropDownDecoratorProps(
-                    decoration: InputDecoration(
-                      enabledBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      border: OutlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                    )
-                ),
-                popupProps: PopupProps.dialog(
-                  showSearchBox: true,
-                  dialogProps: DialogProps(
-                    backgroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  ),
-                  searchFieldProps: TextFieldProps(
-                    decoration: InputDecoration(
-                      prefixIcon: _buildAnimatedSearchIcon(),
-                      hintText: 'Cari...',
-                      filled: true,
-                      fillColor: Colors.grey[100],
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Color(0xFF522E2E)),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              SizedBox(height: 16),
-
-              Text("Catatan", style: TextStyle(fontWeight: FontWeight.bold)),
-              TextFormField(
-                controller: _catatanController,
-                  decoration: InputDecoration(
-                    enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    border: OutlineInputBorder(
-                      borderSide: BorderSide(color: Color(0xFF522E2E), width: 1),
-                      borderRadius: BorderRadius.circular(5),
-                    ),
+                      SizedBox(height: 16),
+                    ],
                   )
-              ),
-              SizedBox(height: 16),
+                      : _buildSearchableDropdown<String>(
+                    title: "Target / Sasaran",
+                    items: targetAndTemuanList, // Menggunakan data dari API targetUji
+                    itemAsString: (target) => target,
+                    selectedItem: selectedTarget,
+                    hint: "Pilih Target / Sasaran",
+                    fieldName: 'target',
+                    onChanged: (value) {
+                      setState(() {
+                        selectedTarget = value;
+                        if (_formSubmitted) {
+                          _updateFieldError('target', value == null);
+                        }
+                      });
+                    },
+                    isRequired: true,
+                  )),
 
-              Text("Dokumentasi", style: TextStyle(fontWeight: FontWeight.bold)),
-              _images!.isNotEmpty
-                  ? SizedBox(
-                height: 200,
-                child: PageView.builder(
-                  itemCount: _images!.length,
-                  controller: PageController(viewportFraction: 0.9),
-                  itemBuilder: (context, index) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 5),
-                      child: GestureDetector(
-                        onTap: () {
-                          showDialog(
-                            context: context,
-                            builder: (_) => Dialog(
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(15),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Image.file(File(_images![index].path)),
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context),
-                                      child: Text('Tutup'),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: Image.file(
-                            File(_images![index].path),
-                            fit: BoxFit.cover,
-                            width: double.infinity,
+                  // Metode (text input)
+                  const Text("Metode", style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _metodeController,
+                    validator: (value) => _customValidator(value, 'metode'),
+                    onChanged: (value) {
+                      if (_formSubmitted) {
+                        _updateFieldError('metode', value.isEmpty);
+                        _formKey.currentState?.validate();
+                      }
+                    },
+                    decoration: _getInputDecoration("Masukkan metode").copyWith(
+                      hintStyle: const TextStyle(
+                        color: Colors.grey,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w300,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Temuan searchable dropdown (sekarang juga dari API targetUji)
+                  _isLoadingDropdownData
+                      ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text("Temuan", style: TextStyle(fontWeight: FontWeight.bold)),
+                      SizedBox(height: 8),
+                      Center(child: CircularProgressIndicator()),
+                      SizedBox(height: 16),
+                    ],
+                  )
+                      : (targetAndTemuanList.isEmpty
+                      ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text("Temuan", style: TextStyle(fontWeight: FontWeight.bold)),
+                      SizedBox(height: 8),
+                      Text(
+                        "Tidak ada data temuan yang tersedia.",
+                        style: TextStyle(color: Colors.red, fontSize: 12),
+                      ),
+                      SizedBox(height: 16),
+                    ],
+                  )
+                      : _buildSearchableDropdown<String>(
+                    title: "Temuan",
+                    items: targetAndTemuanList, // Menggunakan data dari API targetUji
+                    itemAsString: (temuan) => temuan,
+                    selectedItem: selectedTemuan,
+                    hint: "Pilih Temuan",
+                    fieldName: 'temuan',
+                    onChanged: (value) {
+                      setState(() {
+                        selectedTemuan = value;
+                        if (_formSubmitted) {
+                          _updateFieldError('temuan', value == null);
+                        }
+                      });
+                    },
+                    isRequired: true,
+                  )),
+
+                  // Komoditas searchable dropdown
+                  _buildSearchableDropdown<Komoditas>(
+                    title: "Komoditas",
+                    items: komoditasList,
+                    itemAsString: (kom) => kom.namaKomoditas,
+                    selectedItem: komoditasList.firstWhere(
+                          (element) => element.idKomoditas == selectedKomoditasId,
+                      orElse: () => komoditasList.isNotEmpty ? komoditasList.first : Komoditas(
+                        idKomoditas: '', idSuratTugas: '', namaKomoditas: '',
+                      ),
+                    ),
+                    hint: "Pilih Komoditas",
+                    fieldName: 'komoditas',
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() {
+                        selectedKomoditasName = value.namaKomoditas;
+                        selectedKomoditasId = value.idKomoditas;
+                        if (_formSubmitted) {
+                          _updateFieldError('komoditas', false);
+                        }
+                      });
+                    },
+                    isRequired: true,
+                  ),
+
+                  const Text("Catatan", style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _catatanController,
+                    decoration: _getInputDecoration("Masukkan catatan (opsional)").copyWith(
+                      hintStyle: const TextStyle(
+                        color: Colors.grey,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w300,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: const [
+                          Text("Dokumentasi", style: TextStyle(fontWeight: FontWeight.bold)),
+                          SizedBox(width: 20),
+                        ],
+                      ),
+                      SizedBox(
+                        width: 150,
+                        height: 48,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _showImagePicker(context),
+                          icon: const Icon(Icons.upload, size: 18),
+                          label: const Text("Upload Foto", style: TextStyle(fontSize: 15)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF522E2E),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 5),
                           ),
                         ),
                       ),
-                    );
-                  },
-                ),
-              )
-                  : Text("Belum ada foto", style: TextStyle(fontSize: 12, color: Colors.red)),
+                      if (_formSubmitted && _fieldErrors['foto'] == true)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 5),
+                          child: Text(
+                            "Wajib diisi",
+                            style: TextStyle(color: Colors.red, fontSize: 12),
+                          ),
+                        ),
+                    ],
+                  ),
 
-              ElevatedButton.icon(
-                onPressed: () => _showImagePicker(context),
-                icon: Icon(Icons.upload),
-                label: Text("Upload Foto"),
-              ),
-              SizedBox(height: 5),
-              Text("Format .JPG, .PNG, .JPEG", style: TextStyle(fontSize: 12, color: Colors.red)),
-              SizedBox(height: 20),
+                  const SizedBox(height: 12),
+                  // Photo gallery with delete option
+                  if (_uploadedPhotos.isNotEmpty)
+                    SizedBox(
+                      height: 220,
+                      child: PageView.builder(
+                        itemCount: _uploadedPhotos.length,
+                        controller: PageController(viewportFraction: 0.9),
+                        itemBuilder: (context, index) {
+                          final bytes = _uploadedPhotos[index];
 
-              Center(
-                child: SizedBox(
-                  width: 250,
-                  child: ElevatedButton(
-                    onPressed: () => _handleSubmit(context),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      backgroundColor: const Color(0xFF522E2E),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(5),
-                        side: const BorderSide(color: Color(0xFF522E2E), width: 1),
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 5),
+                            child: Stack(
+                              children: [
+                                GestureDetector(
+                                  onTap: () {
+                                    showDialog(
+                                      context: context,
+                                      builder: (_) => Dialog(
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(15),
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(15),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Image.memory(bytes),
+                                              TextButton(
+                                                onPressed: () => Navigator.pop(context),
+                                                child: const Text('Tutup'),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      border: Border.all(color: Colors.grey[400]!, width: 1),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Image.memory(
+                                        bytes,
+                                        fit: BoxFit.cover,
+                                        width: double.infinity,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+
+                                // Delete button
+                                Positioned(
+                                  top: 8,
+                                  right: 8,
+                                  child: Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      color: Colors.black54.withOpacity(0.1),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: IconButton(
+                                      icon: const Icon(Icons.delete, size: 18, color: Colors.red),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () {
+                                        showDialog(
+                                          context: context,
+                                          builder: (ctx) => AlertDialog(
+                                            title: const Text("Hapus Foto"),
+                                            content: const Text("Apakah Anda yakin ingin menghapus foto ini?"),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () => Navigator.of(ctx).pop(),
+                                                child: const Text("Batal"),
+                                              ),
+                                              TextButton(
+                                                onPressed: () {
+                                                  Navigator.of(ctx).pop();
+                                                  deleteImage(index);
+                                                },
+                                                child: const Text("Hapus", style: TextStyle(color: Colors.red)),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+
+                                // Image counter
+                                Positioned(
+                                  bottom: 10,
+                                  right: 10,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.5),
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: Text(
+                                      "${index + 1}/${_uploadedPhotos.length}",
+                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
                     ),
-                    child: const Text(
-                      "Kirim",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                  const SizedBox(height: 5),
+                  const Text("Format .JPG, .PNG, .JPEG",
+                      style: TextStyle(fontSize: 12, color: Colors.red)),
+                  const SizedBox(height: 20),
+
+                  Center(
+                    child: SizedBox(
+                      width: 250,
+                      child: ElevatedButton(
+                        onPressed: _isSubmitting ? null : () => _handleSubmit(context),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          backgroundColor: const Color(0xFF522E2E),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(5),
+                            side: const BorderSide(
+                                color: Color(0xFF522E2E), width: 1),
+                          ),
+                        ),
+                        child: _isSubmitting
+                            ? const CircularProgressIndicator(color: Colors.white)
+                            : const Text(
+                          "Kirim",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
+                  const SizedBox(height: 40),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+          if (_isSubmitting)
+            Container(
+              color: Colors.black.withOpacity(0.5),
+              child: const Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+            ),
+        ],
       ),
-    );
-  }
-
-  Widget _buildAnimatedSearchIcon() {
-    return SlideTransition(
-      position: _searchOffset,
-      child: const Icon(Icons.search, color: Colors.grey),
     );
   }
 }
@@ -642,5 +1313,22 @@ Widget _buildImageSourceOption({
         Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
       ],
     ),
+  );
+}
+
+void showImagePreview(BuildContext context, Uint8List imageBytes) {
+  showDialog(
+    context: context,
+    builder: (_) =>
+        Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(16),
+          child: InteractiveViewer(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.memory(imageBytes),
+            ),
+          ),
+        ),
   );
 }

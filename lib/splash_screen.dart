@@ -1,10 +1,11 @@
 import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:q_officer_barantin/services/auth_provider.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:animated_text_kit/animated_text_kit.dart';
+
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -98,8 +99,8 @@ class SplashScreenState extends State<SplashScreen> {
             width: 216,
             height: 216,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(68),
             ),
           ),
         ),
@@ -136,17 +137,22 @@ class SplashScreenState extends State<SplashScreen> {
               children: [
                 _buildLogo(),
                 const SizedBox(height: 20),
-                const Text(
-                  'Q-Officer',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFFFFDDD6),
-                    fontSize: 30,
-                    fontFamily: 'Urbanist',
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 6,
-                  ),
-                ),
+                AnimatedTextKit(
+                  isRepeatingAnimation: false,
+                  animatedTexts: [
+                    TyperAnimatedText(
+                      'Q-Officer',
+                      textStyle: const TextStyle(
+                        color: Color(0xFF133139),
+                        fontSize: 30,
+                        fontFamily: 'Urbanist',
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 8,
+                      ),
+                      speed: const Duration(milliseconds: 200),
+                    ),
+                  ],
+                )
               ],
             ),
           ),

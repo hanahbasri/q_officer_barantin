@@ -4,6 +4,8 @@ import 'package:q_officer_barantin/beranda/side_bar.dart';
 import 'package:q_officer_barantin/services/auth_provider.dart';
 import 'package:shimmer/shimmer.dart';
 
+import '../services/notification_service.dart';
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -118,9 +120,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     _buildMenuCard(
                       icon: 'images/pk_icon.png',
                       title: 'Pemeriksaan\nLapangan',
-                        onTap: () {
-                          Navigator.pushNamed(context, '/surat-tugas');
-                        }
+                      onTap: () {
+                        Navigator.pushNamed(context, '/surat-tugas');
+                      },
                     ),
                     _buildMenuCard(
                       icon: 'images/plus_icon.png',
@@ -229,10 +231,33 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Text(userName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF4E342E))),
           const SizedBox(height: 4),
           Text('Siap memulai hari yang produktif?', style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              ElevatedButton.icon(
+                onPressed: () {
+                  // Import NotificationService di bagian atas file
+                  NotificationService.testNotification(
+                    title: 'Test Notification',
+                    body: 'This is a test notification',
+                  );
+                },
+                icon: const Icon(Icons.notifications_active, size: 18),
+                label: const Text('Test Notif'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF8D6E63),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  textStyle: const TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
+
 
   Widget _buildMenuCard({
     required String icon,
@@ -246,7 +271,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         elevation: 3,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: isDashed ? BorderSide(color: Colors.grey.shade300, width: 1.2) : BorderSide.none,
+          side: isDashed
+              ? BorderSide(color: Colors.grey.shade300, width: 1.2)
+              : BorderSide.none,
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
@@ -255,18 +282,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             children: [
               Image.asset(
                 icon,
-                height: 44,
-                width: 44,
+                height: 40,
+                width: 40,
                 fit: BoxFit.contain,
               ),
-              const SizedBox(height: 10),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF4E342E),
+              const SizedBox(height: 8),
+              Flexible(
+                child: Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF4E342E),
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: true,
                 ),
               ),
             ],

@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:q_officer_barantin/beranda/akun_saya.dart';
+import 'package:q_officer_barantin/models/komoditas.dart';
+import 'package:q_officer_barantin/models/petugas.dart';
 import 'package:q_officer_barantin/services/auth_provider.dart';
 import 'dart:io';
+import 'package:q_officer_barantin/beranda/logout_dialog.dart';
+
+import '../databases/db_helper.dart';
+import '../models/lokasi.dart';
+import '../models/st_lengkap.dart';
+import '../surat_tugas/st_tertunda.dart';
 
 const Color darkBrown = Color(0xFF522E2E);
 const Color lightBackground = Color(0xFFF7F4EF);
@@ -15,7 +23,7 @@ class SideBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final namaLengkap = authProvider.userFullName ?? "Pengguna";
-    final nipPengguna = authProvider.userId ?? "NIP tidak tersedia";
+    final nipPengguna = authProvider.userNip ?? "NIP tidak tersedia";
 
     return Drawer(
       width: MediaQuery.of(context).size.width * 0.65,
@@ -42,66 +50,207 @@ class SideBar extends StatelessWidget {
             },
           ),
           _SidebarTile(
-            icon: Icons.logout_rounded,
-            title: "Keluar",
-            iconColor: Colors.red,
-            textColor: Colors.red,
-            onTap: () => _showLogoutDialog(context),
+            icon: Icons.help_outline,
+            title: "Tutorial Aplikasi",
+            iconColor: darkerText,
+            textColor: darkerText,
+            onTap: () {
+              _showTutorialOptions(context);
+            },
+          ),
+          AnimatedLogoutButton(
+            onTap: () => showAnimatedLogoutDialog(context),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _showLogoutDialog(BuildContext context) async {
-    return showDialog(
+  // Fungsi untuk menampilkan opsi tutorial
+  void _showTutorialOptions(BuildContext context) {
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        contentPadding: const EdgeInsets.all(24),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (BuildContext context) {
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                "Pilih Tutorial",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: darkBrown,
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              _TutorialOptionItem(
+                title: "Surat Tugas Tertunda",
+                description: "Tutorial tentang halaman detail surat tugas yang belum diterima",
+                icon: Icons.assignment_outlined,
+                onTap: () async {
+                  // Tutup bottom sheet
+                  Navigator.pop(context);
+
+                  // Tutup sidebar
+                  Navigator.pop(context);
+
+                  // Ambil data surat tugas tertunda dari database
+                  try {
+                    final db = DatabaseHelper();
+                    final data = await db.getData('Surat_Tugas');
+
+                    // Cari surat tugas yang statusnya tertunda
+                    StLengkap? suratTugasTertunda;
+
+                    for (var item in data) {
+                      final status = item['status'] ?? '';
+
+                      // Also consider 'Proses' as 'tertunda' for tutorial purposes
+                      if (status == 'tertunda' || status == 'Proses') {
+                        // Ambil data terkait dari database
+                        final futures = await Future.wait([
+                          db.getPetugasById(item['id_surat_tugas']),
+                          db.getLokasiById(item['id_surat_tugas']),
+                          db.getKomoditasById(item['id_surat_tugas']),
+                        ]);
+
+                        // Convert Map to Model objects using fromDbMap
+                        final petugasList = (futures[0] as List).map((p) => Petugas.fromDbMap(p)).toList();
+                        final lokasiList = (futures[1] as List).map((l) => Lokasi.fromDbMap(l)).toList();
+                        final komoditasList = (futures[2] as List).map((k) => Komoditas.fromDbMap(k)).toList();
+
+                        suratTugasTertunda = StLengkap.fromDbMap(
+                          item,
+                          petugasList,
+                          lokasiList,
+                          komoditasList,
+                        );
+                        break;
+                      }
+                    }
+
+                    if (suratTugasTertunda != null) {
+                      // Navigasi ke halaman tutorial dengan data asli
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => SuratTugasTertunda(
+                            suratTugas: suratTugasTertunda!,
+                            onTerimaTugas: () async {
+                              // Do nothing for tutorial - just show snackbar
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Ini adalah mode tutorial - tombol tidak aktif'),
+                                  backgroundColor: Color(0xFF522E2E),
+                                ),
+                              );
+                            },
+                            hasActiveTask: false,
+                            showTutorialImmediately: true, // Flag khusus untuk tutorial
+                          ),
+                        ),
+                      );
+                    } else {
+                      // Jika tidak ada data tertunda
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Tidak ada surat tugas tertunda untuk tutorial'),
+                          backgroundColor: Color(0xFF522E2E),
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    // Error handling
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Gagal memuat data untuk tutorial: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                },
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _TutorialOptionItem extends StatelessWidget {
+  final String title;
+  final String description;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _TutorialOptionItem({
+    required this.title,
+    required this.description,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: darkBrown.withOpacity(0.3), width: 1),
+        ),
+        child: Row(
           children: [
-            const Icon(Icons.logout, size: 48, color: darkBrown),
-            const SizedBox(height: 16),
-            const Text(
-              'Keluar',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: darkBrown),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: darkBrown.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                color: darkBrown,
+                size: 24,
+              ),
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'Apakah Anda yakin ingin keluar dari akun?',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.black87),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: darkBrown,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    description,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: darkBrown,
-                    side: const BorderSide(color: darkBrown),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Tidak'),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: darkBrown,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                  onPressed: () async {
-                    Navigator.of(context).pop();
-                    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-                    await authProvider.logout();
-                    Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
-                  },
-                  child: const Text('Ya'),
-                ),
-              ],
+            const Icon(
+              Icons.arrow_forward_ios,
+              color: darkBrown,
+              size: 16,
             ),
           ],
         ),

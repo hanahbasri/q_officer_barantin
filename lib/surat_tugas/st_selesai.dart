@@ -1,23 +1,60 @@
-import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:q_officer_barantin/databases/db_helper.dart';
 
-class SuratTugasSelesai extends StatelessWidget {
+class SuratTugasSelesai extends StatefulWidget {
   final Map<String, dynamic> hasilPemeriksaan;
 
   const SuratTugasSelesai({super.key, required this.hasilPemeriksaan});
 
   @override
+  State<SuratTugasSelesai> createState() => _SuratTugasSelesaiState();
+}
+
+class _SuratTugasSelesaiState extends State<SuratTugasSelesai> {
+  List<String> base64List = [];
+  final PageController _pageController = PageController(viewportFraction: 0.85);
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    loadFoto();
+    _pageController.addListener(() {
+      if (!_pageController.hasClients) return;
+      int next = _pageController.page!.round();
+      if (_currentPage != next) {
+        setState(() {
+          _currentPage = next;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> loadFoto() async {
+    final id = widget.hasilPemeriksaan['id_pemeriksaan'];
+    final db = DatabaseHelper();
+    final list = await db.getImageBase64List(id);
+    setState(() {
+      base64List = list;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Ambil foto dari DB
-    final fotoString = hasilPemeriksaan['fotoPaths'] as String?;
-    final imagePaths = fotoString != null && fotoString.isNotEmpty
-        ? fotoString.split('|')
-        : <String>[];
+    final hasil = widget.hasilPemeriksaan;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text("Hasil Pemeriksaan", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Color(0xFF522E2E),
+        title: const Text("Hasil Pemeriksaan", style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF522E2E),
         foregroundColor: Colors.white,
         centerTitle: true,
       ),
@@ -30,35 +67,68 @@ class SuratTugasSelesai extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                if (imagePaths.isNotEmpty)
+                if (base64List.isNotEmpty)
                   SizedBox(
                     height: 200,
                     child: PageView.builder(
-                      itemCount: imagePaths.length,
-                      controller: PageController(viewportFraction: 0.9),
+                      itemCount: base64List.length,
+                      controller: _pageController,
                       itemBuilder: (context, index) {
-                        return GestureDetector(
-                          onTap: () => _showImagePreview(context, imagePaths[index]),
-                          child: ClipRRect(
+                        final bytes = base64Decode(base64List[index]);
+                        return Container(
+                          width: MediaQuery.of(context).size.width * 0.105,
+                          margin: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(12),
-                            child: Image.file(
-                              File(imagePaths[index]),
-                              fit: BoxFit.cover,
+                            border: Border.all(
+                              color: const Color(0xFF522E2E).withOpacity(0.8),
+                              width: 1,
+                            ),
+                          ),
+                          child: GestureDetector(
+                            onTap: () => _showImagePreview(context, bytes),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.memory(bytes, fit: BoxFit.cover),
                             ),
                           ),
                         );
                       },
                     ),
-                  ),
-                SizedBox(height: 16),
+                  )
+                else
+                  const Text("Belum ada foto"),
 
-                // Tabel hasil pemeriksaan
-                _buildRow("Lokasi", hasilPemeriksaan['lokasi']),
-                _buildRow("Target / Sasaran", hasilPemeriksaan['target']),
-                _buildRow("Metode", hasilPemeriksaan['metode']),
-                _buildRow("Komoditas", hasilPemeriksaan['komoditas']),
-                _buildRow("Temuan", hasilPemeriksaan['temuan']),
-                _buildRow("Catatan", hasilPemeriksaan['catatan']),
+                if (base64List.length > 1)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(
+                        base64List.length,
+                            (index) => Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _currentPage == index
+                                ? const Color(0xFF522E2E)
+                                : Colors.grey.withOpacity(0.5),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                const SizedBox(height: 16),
+
+                _buildRow("Lokasi", hasil['nama_lokasi']),
+                _buildRow("Target / Sasaran", hasil['target']),
+                _buildRow("Metode", hasil['metode']),
+                _buildRow("Komoditas", hasil['nama_komoditas']),
+                _buildRow("Temuan", hasil['temuan']),
+                _buildRow("Catatan", hasil['catatan']),
               ],
             ),
           ),
@@ -89,27 +159,33 @@ class SuratTugasSelesai extends StatelessWidget {
     );
   }
 
-
-  void _showImagePreview(BuildContext context, String imagePath) {
+  void _showImagePreview(BuildContext context, Uint8List imageBytes) {
     showDialog(
       context: context,
       builder: (_) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Image.file(
-                File(imagePath),
-                fit: BoxFit.cover,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(15),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(15),
+                      topRight: Radius.circular(15),
+                    ),
+                    child: Image.memory(imageBytes),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text("Tutup"),
+                  ),
+                ],
               ),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text("Tutup"),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
