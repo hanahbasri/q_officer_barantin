@@ -265,46 +265,53 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     required VoidCallback onTap,
     bool isDashed = false,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Card(
-        elevation: 3,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: isDashed
-              ? BorderSide(color: Colors.grey.shade300, width: 1.2)
-              : BorderSide.none,
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset(
-                icon,
-                height: 40,
-                width: 40,
-                fit: BoxFit.contain,
-              ),
-              const SizedBox(height: 8),
-              Flexible(
-                child: Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF4E342E),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final iconSize = constraints.maxWidth * 0.25;
+
+        return GestureDetector(
+          onTap: onTap,
+          child: Card(
+            elevation: 3,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: isDashed
+                  ? BorderSide(color: Colors.grey.shade300, width: 1.2)
+                  : BorderSide.none,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset(
+                    icon,
+                    height: iconSize,
+                    width: iconSize,
+                    fit: BoxFit.contain,
                   ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  softWrap: true,
-                ),
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF4E342E),
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: true,
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

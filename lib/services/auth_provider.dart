@@ -437,7 +437,7 @@ class AuthProvider with ChangeNotifier {
       _isLoggedIn = false;
       userName = null;
       userId = null;
-      nip = null; // Reset nip
+      nip = null;
       userFullName = null;
       userEmail = null;
       accessToken = null;

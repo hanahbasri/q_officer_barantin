@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
@@ -189,219 +191,268 @@ class SuratTugasService {
     return totalEstimatedPayload <= MAX_PAYLOAD_SIZE_BYTES;
   }
 
-  static Future<bool> submitHasilPemeriksaan(HasilPemeriksaan hasil, List<Uint8List> photos, String userNip) async {
-    try {
-      // Validasi awal
-      if (userNip.isEmpty) {
-        if (kDebugMode) {
-          print('❌ GAGAL (submitHasilPemeriksaan): userNip kosong.');
-        }
-        return false;
-      }
+  static Future<bool> submitHasilPemeriksaan(
+      HasilPemeriksaan hasil,
+      List<Uint8List> compressedPhotos,
+      String userNip
+      ) async {
+    const int maxRetries = 3;
+    int currentAttempt = 0;
 
-      if (photos.isEmpty) {
-        if (kDebugMode) {
-          print('❌ GAGAL (submitHasilPemeriksaan): Tidak ada foto untuk dikirim.');
-        }
-        return false;
-      }
+    while (currentAttempt < maxRetries) {
+      currentAttempt++;
 
-      // FIXED: Gunakan validasi payload yang sama dengan FormPeriksa (100KB)
-      if (!_validatePayloadSize(photos)) {
-        if (kDebugMode) {
-          print('❌ GAGAL: Payload terlalu besar (>${(MAX_PAYLOAD_SIZE_BYTES / 1024).toStringAsFixed(0)}KB). Kurangi ukuran/jumlah foto.');
-        }
-        return false;
-      }
-
-      // Get ID Petugas
-      String? idPetugas = await getIdPetugasByNip(userNip, hasil.idSuratTugas);
-
-      if (idPetugas == null || idPetugas.isEmpty) {
-        if (kDebugMode) {
-          print('❌ GAGAL (submitHasilPemeriksaan): id_petugas tidak ditemukan untuk NIP: $userNip, ST ID: ${hasil.idSuratTugas}.');
-        }
-        return false;
-      }
-
-      // Encode photos to base64
-      List<String> base64Photos = [];
       try {
-        for (int i = 0; i < photos.length; i++) {
-          String base64Photo = base64Encode(photos[i]);
-          base64Photos.add(base64Photo);
-          if (kDebugMode) {
-            print('📷 Foto ${i + 1} berhasil di-encode: ${(base64Photo.length / 1024).toStringAsFixed(1)} KB');
-          }
-        }
-      } catch (e) {
         if (kDebugMode) {
-          print('❌ Error saat encode foto ke base64: $e');
+          print('🔄 Mencoba mengirim data (percobaan ke-$currentAttempt dari $maxRetries)...');
         }
-        return false;
-      }
 
-      // Format tanggal
-      String formattedTglPeriksa = hasil.tanggal;
-      try {
-        DateTime parsedDate;
-        if (hasil.tanggal.contains('T')) {
-          parsedDate = DateTime.parse(hasil.tanggal);
-        } else {
-          parsedDate = DateFormat("yyyy-MM-dd HH:mm:ss").parse(hasil.tanggal);
-        }
-        formattedTglPeriksa = DateFormat("yyyy-MM-ddTHH:mm:ss").format(parsedDate);
-      } catch (e) {
-        if (kDebugMode) {
-          print('⚠️ Gagal memformat tgl_periksa: ${hasil.tanggal}, gunakan timestamp sekarang. Error: $e');
-        }
-        formattedTglPeriksa = DateFormat("yyyy-MM-ddTHH:mm:ss").format(DateTime.now());
-      }
-
-      // Build payload
-      final Map<String, dynamic> payload = {
-        'id': hasil.idPemeriksaan.trim(),
-        'id_surat_tugas': hasil.idSuratTugas.trim(),
-        'id_komoditas': hasil.idKomoditas.trim(),
-        'id_lokasi': hasil.idLokasi.trim(),
-        'lat': hasil.lat.trim(),
-        'long': hasil.long.trim(),
-        'target': hasil.target.trim(),
-        'metode': hasil.metode.trim(),
-        'temuan': hasil.temuan.trim(),
-        'tgl_periksa': formattedTglPeriksa,
-        'attachment': base64Photos,
-        'id_petugas': idPetugas.trim(),
-      };
-
-      if (hasil.catatan != null && hasil.catatan!.trim().isNotEmpty) {
-        payload['catatan'] = hasil.catatan!.trim();
-      }
-
-      // Debug payload info
-      if (kDebugMode) {
-        print('📤 PAYLOAD FINAL (submitHasilPemeriksaan):');
-        payload.forEach((key, value) {
-          if (key != 'attachment') {
-            if (kDebugMode) {
-              print('   - $key: "$value"');
-            }
-          } else {
-            if (kDebugMode) {
-              print('   - attachment: [${base64Photos.length} photos]');
-            }
-          }
-        });
-        String jsonPayload = jsonEncode(payload);
-        double payloadSizeKB = jsonPayload.length / 1024;
-        print('📊 Total ukuran payload aktual: ${payloadSizeKB.toStringAsFixed(2)} KB');
-      }
-
-      // Send HTTP request with retry mechanism
-      http.Response? response; // Make response nullable
-      int maxRetries = 3;
-      int currentTry = 0;
-
-      while (currentTry < maxRetries) {
-        try {
-          currentTry++;
+        // Validasi awal
+        if (userNip.isEmpty) {
           if (kDebugMode) {
-            print('🔄 Mencoba mengirim data (percobaan ke-$currentTry dari $maxRetries)...');
-          }
-
-          response = await http.post(
-            Uri.parse('$baseUrl/periksa'),
-            headers: {
-              'Authorization': authHeader,
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode(payload),
-          ).timeout(Duration(seconds: 60)); // Timeout 60 detik
-
-          break; // Jika berhasil, keluar dari loop
-
-        } catch (e) {
-          if (kDebugMode) {
-            print('❌ Error pada percobaan ke-$currentTry: $e');
-          }
-
-          if (currentTry >= maxRetries) {
-            if (kDebugMode) {
-              print('❌ Gagal setelah $maxRetries percobaan. Menyerah.');
-            }
-            return false;
-          }
-
-          // Tunggu sebentar sebelum retry
-          await Future.delayed(Duration(seconds: 2));
-          continue;
-        }
-      }
-
-      // Check if response is null (all retries failed)
-      if (response == null) {
-        if (kDebugMode) {
-          print('❌ Tidak ada response setelah semua percobaan. Request gagal total.');
-        }
-        return false;
-      }
-
-      // Process response
-      if (kDebugMode) {
-        print('🌐 API Submit Status: ${response.statusCode}');
-        print('🌐 API Submit Response: ${response.body}');
-      }
-
-      if (response.statusCode == 200) {
-        try {
-          final jsonData = json.decode(response.body);
-
-          if (jsonData is Map && jsonData.containsKey('status')) {
-            if (jsonData['status'] == true || jsonData['status'] == 'true' || jsonData['status'] == 1) {
-              if (kDebugMode) {
-                print('✅ Hasil pemeriksaan berhasil dikirim ke server!');
-              }
-              return true;
-            } else {
-              String errorMessage = jsonData['message']?.toString() ?? 'Status false dari server';
-              if (kDebugMode) print('❌ Server menolak data: $errorMessage');
-              return false;
-            }
-          } else {
-            if (kDebugMode) {
-              print('❌ Response tidak memiliki field status yang valid');
-            }
-            return false;
-          }
-        } on FormatException catch (e) {
-          if (kDebugMode) {
-            print('❌ Error parsing JSON response: $e');
-            print('❌ Raw response: ${response.body}');
+            print('❌ GAGAL (submitHasilPemeriksaan): userNip kosong.');
           }
           return false;
         }
-      } else if (response.statusCode == 413) {
-        // FIXED: Pesan error yang konsisten dengan FormPeriksa
-        if (kDebugMode) {
-          print('❌ Error 413: Payload terlalu besar (>${(MAX_PAYLOAD_SIZE_BYTES / 1024).toStringAsFixed(0)}KB). Kurangi ukuran/jumlah foto.');
+
+        if (compressedPhotos.isEmpty) {
+          if (kDebugMode) {
+            print('❌ GAGAL (submitHasilPemeriksaan): Tidak ada foto untuk dikirim.');
+          }
+          return false;
         }
-        return false;
-      } else if (response.statusCode == 500) {
-        if (kDebugMode) print('❌ Error 500: Server error. Coba lagi nanti.');
-        return false;
-      } else {
-        if (kDebugMode) {
-          print('❌ HTTP Error ${response.statusCode}: ${response.reasonPhrase}');
-          print('❌ Response body: ${response.body}');
+
+        // Validasi ukuran payload
+        if (!_validatePayloadSize(compressedPhotos)) {
+          if (kDebugMode) {
+            print('❌ GAGAL: Payload terlalu besar (>${(MAX_PAYLOAD_SIZE_BYTES / 1024).toStringAsFixed(0)}KB). Kurangi ukuran/jumlah foto.');
+          }
+          return false;
         }
-        return false;
+
+        // Get ID Petugas
+        String? idPetugas = await getIdPetugasByNip(userNip, hasil.idSuratTugas);
+
+        if (idPetugas == null || idPetugas.isEmpty) {
+          if (kDebugMode) {
+            print('❌ GAGAL (submitHasilPemeriksaan): id_petugas tidak ditemukan untuk NIP: $userNip, ST ID: ${hasil.idSuratTugas}.');
+          }
+          return false;
+        }
+
+        // Encode photos to base64
+        List<String> base64Photos = [];
+        try {
+          for (int i = 0; i < compressedPhotos.length; i++) {
+            String base64Photo = base64Encode(compressedPhotos[i]);
+            base64Photos.add(base64Photo);
+            if (kDebugMode) {
+              print('📷 Foto ${i + 1} berhasil di-encode: ${(base64Photo.length / 1024).toStringAsFixed(1)} KB');
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('❌ Error saat encode foto ke base64: $e');
+          }
+          return false;
+        }
+
+        // Format tanggal
+        String formattedTglPeriksa = hasil.tanggal;
+        try {
+          DateTime parsedDate;
+          if (hasil.tanggal.contains('T')) {
+            parsedDate = DateTime.parse(hasil.tanggal);
+          } else {
+            parsedDate = DateFormat("yyyy-MM-dd HH:mm:ss").parse(hasil.tanggal);
+          }
+          formattedTglPeriksa = DateFormat("yyyy-MM-ddTHH:mm:ss").format(parsedDate);
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ Gagal memformat tgl_periksa: ${hasil.tanggal}, gunakan timestamp sekarang. Error: $e');
+          }
+          formattedTglPeriksa = DateFormat("yyyy-MM-ddTHH:mm:ss").format(DateTime.now());
+        }
+
+        // Siapkan data untuk server
+        final Map<String, dynamic> payload = {
+          'id': hasil.idPemeriksaan.trim(),
+          'id_surat_tugas': hasil.idSuratTugas.trim(),
+          'id_komoditas': hasil.idKomoditas.trim(),
+          'id_lokasi': hasil.idLokasi.trim(),
+          'lat': hasil.lat.trim(),
+          'long': hasil.long.trim(),
+          'target': hasil.target.trim(),
+          'metode': hasil.metode.trim(),
+          'temuan': hasil.temuan.trim(),
+          'tgl_periksa': formattedTglPeriksa,
+          'attachment': base64Photos,
+          'id_petugas': idPetugas.trim(),
+        };
+
+        // Tambahkan catatan jika ada
+        if (hasil.catatan != null && hasil.catatan!.trim().isNotEmpty) {
+          payload['catatan'] = hasil.catatan!.trim();
+        }
+
+        if (kDebugMode) {
+          compressedPhotos.fold(0, (sum, photo) => sum + photo.length);
+          print('📤 PAYLOAD FINAL (submitHasilPemeriksaan):');
+          payload.forEach((key, value) {
+            if (key != 'attachment') {
+              if (kDebugMode) {
+                print('   - $key: "$value"');
+              }
+            } else {
+              if (kDebugMode) {
+                print('   - attachment: [${base64Photos.length} photos]');
+              }
+            }
+          });
+          String jsonPayload = jsonEncode(payload);
+          double payloadSizeKB = jsonPayload.length / 1024;
+          print('📊 Total ukuran payload aktual: ${payloadSizeKB.toStringAsFixed(2)} KB');
+        }
+
+        final response = await http.post(
+          Uri.parse('$baseUrl/periksa'),
+          headers: {
+            'Authorization': authHeader,
+            'Content-Type': 'application/json',
+          },
+          body: json.encode(payload),
+        ).timeout(
+          const Duration(seconds: 60),
+          onTimeout: () {
+            throw TimeoutException('Request timeout setelah 60 detik');
+          },
+        );
+
+        if (kDebugMode) {
+          print('🌐 API Submit Status: ${response.statusCode}');
+          print('🌐 API Submit Response: ${response.body}');
+        }
+
+        // Handle status code yang benar
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          try {
+            final responseData = json.decode(response.body);
+
+            // Periksa status dalam response body
+            if (responseData is Map<String, dynamic>) {
+              if (responseData.containsKey('status')) {
+                if (responseData['status'] == true ||
+                    responseData['status'] == 'true' ||
+                    responseData['status'] == 1) {
+                  if (kDebugMode) {
+                    print('✅ Berhasil mengirim hasil pemeriksaan ke server');
+                    print('📝 Pesan server: ${responseData['message'] ?? 'Tidak ada pesan'}');
+                    print('🔢 Status Code: ${response.statusCode}'); // Tambahan untuk debugging
+                  }
+                  return true;
+                } else {
+                  String errorMessage = responseData['message']?.toString() ?? 'Status false dari server';
+                  if (kDebugMode) {
+                    print('❌ Server menolak data: $errorMessage');
+                    print('🔢 Status Code: ${response.statusCode}');
+                  }
+                  return false;
+                }
+              } else {
+                if (kDebugMode) {
+                  print('❌ Response tidak memiliki field status yang valid');
+                  print('🔢 Status Code: ${response.statusCode}');
+                }
+                return false;
+              }
+            }
+            // Jika response tidak sesuai format yang diharapkan
+            if (kDebugMode) {
+              print('⚠️ Format response tidak dikenal, tapi status code sukses');
+              print('🔢 Status Code: ${response.statusCode}');
+            }
+            return true;
+
+          } catch (e) {
+            if (kDebugMode) {
+              print('❌ Error parsing response JSON: $e');
+              print('📄 Raw response: ${response.body}');
+              print('🔢 Status Code: ${response.statusCode}');
+            }
+            // Jika JSON parsing gagal tapi status code sukses, anggap berhasil
+            return true;
+          }
+        }
+        else if (response.statusCode == 413) {
+          if (kDebugMode) {
+            print('❌ Error 413: Payload terlalu besar (>${(MAX_PAYLOAD_SIZE_BYTES / 1024).toStringAsFixed(0)}KB). Kurangi ukuran/jumlah foto.');
+          }
+          return false;
+        }
+        else if (response.statusCode >= 400 && response.statusCode < 500) {
+          if (kDebugMode) {
+            print('❌ Client Error ${response.statusCode}: ${response.body}');
+          }
+          return false;
+        }
+        else if (response.statusCode >= 500) {
+          if (kDebugMode) {
+            print('⚠️ Server Error ${response.statusCode}: ${response.body}');
+          }
+          if (currentAttempt >= maxRetries) {
+            if (kDebugMode) {
+              print('❌ Gagal setelah $maxRetries percobaan - Server Error');
+            }
+            return false;
+          }
+
+          await Future.delayed(Duration(seconds: currentAttempt * 2));
+          continue;
+        }
+        else {
+          if (kDebugMode) {
+            print('❌ Status code tidak dikenal: ${response.statusCode}');
+            print('📄 Response: ${response.body}');
+          }
+          return false;
+        }
+
+      } on TimeoutException catch (e) {
+        if (kDebugMode) {
+          print('⏰ Timeout pada percobaan ke-$currentAttempt: $e');
+        }
+        if (currentAttempt >= maxRetries) {
+          if (kDebugMode) {
+            print('❌ Gagal setelah $maxRetries percobaan - Timeout');
+          }
+          return false;
+        }
+        await Future.delayed(Duration(seconds: currentAttempt * 2));
+      } on SocketException catch (e) {
+        if (kDebugMode) {
+          print('🌐 Koneksi bermasalah pada percobaan ke-$currentAttempt: $e');
+        }
+        if (currentAttempt >= maxRetries) {
+          if (kDebugMode) {
+            print('❌ Gagal setelah $maxRetries percobaan - Koneksi bermasalah');
+          }
+          return false;
+        }
+        await Future.delayed(Duration(seconds: currentAttempt * 2));
+      } catch (e) {
+        if (kDebugMode) {
+          print('❌ Error tidak terduga pada percobaan ke-$currentAttempt: $e');
+          print('🔍 Stack trace: ${StackTrace.current}');
+        }
+        if (currentAttempt >= maxRetries) {
+          if (kDebugMode) {
+            print('❌ Gagal setelah $maxRetries percobaan - Error tidak terduga');
+          }
+          return false;
+        }
+        await Future.delayed(Duration(seconds: currentAttempt * 2));
       }
-    } catch (e) {
-      if (kDebugMode) {
-        print('❌ Exception saat submit hasil pemeriksaan: $e');
-        print('❌ Stack trace: ${StackTrace.current}');
-      }
-      return false;
     }
+    return false;
   }
 }
