@@ -346,10 +346,7 @@ class _HasilPeriksaCardState extends State<HasilPeriksaCard> {
                       ),
                     ],
                   ),
-
-                  // SYNC BUTTON (if enabled)
                   if (widget.showSync) const Divider(height: 12),
-
                   if (widget.showSync)
                     Align(
                       alignment: Alignment.bottomRight,
@@ -369,7 +366,7 @@ class _HasilPeriksaCardState extends State<HasilPeriksaCard> {
                         )
                             : Icon(
                           item['syncdata'] == 1 ? Icons.check_circle : Icons.sync,
-                          color: Color(0xFF522E2E),
+                          color: item['syncdata'] == 1 ? Colors.white : Color(0xFF522E2E),
                         ),
                         label: Text(
                           _isSyncing
@@ -377,11 +374,14 @@ class _HasilPeriksaCardState extends State<HasilPeriksaCard> {
                               : item['syncdata'] == 1
                               ? 'Telah Sinkron'
                               : 'Sinkron Sekarang',
-                          style: const TextStyle(color: Color(0xFF522E2E), fontSize: 13),
+                          style: TextStyle(
+                            color: item['syncdata'] == 1 ? Colors.white : Color(0xFF522E2E),
+                            fontSize: 13,
+                          ),
                         ),
                         style: OutlinedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          side: const BorderSide(color: Color(0xFF522E2E)),
+                          backgroundColor: item['syncdata'] == 1 ? Colors.green : Colors.white,
+                          side: BorderSide(color: item['syncdata'] == 1 ? Colors.green : Color(0xFF522E2E)),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         ),

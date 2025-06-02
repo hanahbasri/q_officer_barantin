@@ -36,6 +36,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
   final GlobalKey petugasCardKey = GlobalKey();
   final GlobalKey lokasiCardKey = GlobalKey();
   final GlobalKey buatLaporanKey = GlobalKey();
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -398,7 +399,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                                     return;
                                   }
 
-                                  final url = 'https://cert.karantinaindonesia.go.id/print_cert/penugasan/k22/$link';
+                                  final url = link;
                                   if (kDebugMode) {
                                     print("🌐 URL: $url");
                                   }
@@ -504,9 +505,11 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                             ? 200  // Fixed height when there are more than 2 officers
                             : null, // Dynamic height for few officers
                         child: Scrollbar(
+                          controller: _scrollController,
                           thumbVisibility: true,
                           trackVisibility: true,
                           child: ListView.builder(
+                            controller: _scrollController,
                             shrinkWrap: true,
                             itemCount: widget.suratTugas.petugas.length,
                             itemBuilder: (context, index) {

@@ -35,6 +35,7 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
   final GlobalKey petugasCardKey = GlobalKey();
   final GlobalKey lokasiCardKey = GlobalKey();
   final GlobalKey terimaTugasKey = GlobalKey();
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -417,7 +418,7 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                                     return;
                                   }
 
-                                  final url = 'https://cert.karantinaindonesia.go.id/print_cert/penugasan/k22/$link';
+                                  final url = link;
                                   if (kDebugMode) {
                                     print("🌐 URL: $url");
                                   }
@@ -526,6 +527,7 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                           thumbVisibility: true,
                           trackVisibility: true,
                           child: ListView.builder(
+                            controller: _scrollController,
                             shrinkWrap: true,
                             itemCount: widget.suratTugas.petugas.length,
                             itemBuilder: (context, index) {
