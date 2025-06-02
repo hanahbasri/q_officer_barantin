@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:q_officer_barantin/main.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 import 'package:provider/provider.dart';
 import 'form_periksa.dart';
@@ -43,7 +44,6 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
     super.initState();
     _checkTutorialStatus();
 
-    // Initialize tutorial after build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initTutorial();
       Future.delayed(const Duration(milliseconds: 600), () {
@@ -69,7 +69,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
   void _initTutorial() {
     tutorialCoachMark = TutorialCoachMark(
       targets: _createTargets(),
-      colorShadow: const Color(0xFF522E2E),
+      colorShadow: MyApp.karantinaBrown,
       textSkip: "LEWATI",
       textStyleSkip: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
       paddingFocus: 10,
@@ -121,7 +121,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                     const Text(
                       "Detail Surat Tugas 📋",
                       style: TextStyle(
-                        color: Color(0xFF522E2E),
+                        color: MyApp.karantinaBrown,
                         fontWeight: FontWeight.bold,
                         fontSize: 18,
                       ),
@@ -162,9 +162,9 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
-                      "Daftar Petugas 🧑‍🤝‍🧑",
+                      "Daftar Petugas 👥",
                       style: TextStyle(
-                        color: Color(0xFF522E2E),
+                        color: MyApp.karantinaBrown,
                         fontWeight: FontWeight.bold,
                         fontSize: 18,
                       ),
@@ -207,7 +207,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                     const Text(
                       "Lokasi Penugasan 📍",
                       style: TextStyle(
-                        color: Color(0xFF522E2E),
+                        color: MyApp.karantinaBrown,
                         fontWeight: FontWeight.bold,
                         fontSize: 18,
                       ),
@@ -250,7 +250,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                     const Text(
                       "Buat Laporan Pemeriksaan 📝",
                       style: TextStyle(
-                        color: Color(0xFF522E2E),
+                        color: MyApp.karantinaBrown,
                         fontWeight: FontWeight.bold,
                         fontSize: 18,
                       ),
@@ -274,7 +274,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Ambil AuthProvider dari context untuk akses data user
+
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
     return Scaffold(
@@ -283,7 +283,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
           "Surat Tugas Aktif",
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        backgroundColor: const Color(0xFF522E2E),
+        backgroundColor: MyApp.karantinaBrown,
         foregroundColor: Colors.white,
         centerTitle: true,
         actions: [
@@ -467,7 +467,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                         children: [
                           const Icon(
                             Icons.people_alt,
-                            color: Color(0xFF522E2E),
+                            color: MyApp.karantinaBrown,
                             size: 20,
                           ),
                           const SizedBox(width: 8),
@@ -476,21 +476,21 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
-                              color: Color(0xFF522E2E),
+                              color: MyApp.karantinaBrown,
                             ),
                           ),
                           const Spacer(),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF522E2E).withOpacity(0.1),
+                              color: MyApp.karantinaBrown.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
                               "${widget.suratTugas.petugas.length} petugas",
                               style: const TextStyle(
                                 fontSize: 12,
-                                color: Color(0xFF522E2E),
+                                color: MyApp.karantinaBrown,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -526,7 +526,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                                       width: 40,
                                       height: 40,
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF522E2E).withOpacity(0.1),
+                                        color: MyApp.karantinaBrown.withOpacity(0.1),
                                         shape: BoxShape.circle,
                                       ),
                                       child: Center(
@@ -537,7 +537,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                                           style: const TextStyle(
                                             fontSize: 18,
                                             fontWeight: FontWeight.bold,
-                                            color: Color(0xFF522E2E),
+                                            color: MyApp.karantinaBrown,
                                           ),
                                         ),
                                       ),
@@ -598,7 +598,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                             children: [
                               Icon(
                                 Icons.map,
-                                color: Color(0xFF522E2E),
+                                color: MyApp.karantinaBrown,
                                 size: 20,
                               ),
                               SizedBox(width: 8),
@@ -607,7 +607,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16,
-                                  color: Color(0xFF522E2E),
+                                  color: MyApp.karantinaBrown,
                                 ),
                               ),
                             ],
@@ -615,7 +615,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF522E2E).withOpacity(0.1),
+                              color: MyApp.karantinaBrown.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Row(
@@ -623,7 +623,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                               children: [
                                 const Icon(
                                   Icons.open_in_new,
-                                  color: Color(0xFF522E2E),
+                                  color: MyApp.karantinaBrown,
                                   size: 14,
                                 ),
                                 const SizedBox(width: 4),
@@ -641,7 +641,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                                   child: const Text(
                                     'Lihat Detail',
                                     style: TextStyle(
-                                      color: Color(0xFF522E2E),
+                                      color: MyApp.karantinaBrown,
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
@@ -660,7 +660,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: const Color(0xFF522E2E).withOpacity(0.8),
+                            color: MyApp.karantinaBrown.withOpacity(0.8),
                             width: 1,
                           ),
                         ),
@@ -760,7 +760,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF522E2E),
+                        color: MyApp.karantinaBrown,
                       ),
                     ),
                   ),

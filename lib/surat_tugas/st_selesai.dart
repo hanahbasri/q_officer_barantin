@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:q_officer_barantin/databases/db_helper.dart';
+import 'package:q_officer_barantin/main.dart';
 
 class SuratTugasSelesai extends StatefulWidget {
   final Map<String, dynamic> hasilPemeriksaan;
@@ -54,7 +55,7 @@ class _SuratTugasSelesaiState extends State<SuratTugasSelesai> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Hasil Pemeriksaan", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF522E2E),
+        backgroundColor: MyApp.karantinaBrown,
         foregroundColor: Colors.white,
         centerTitle: true,
       ),
@@ -81,7 +82,7 @@ class _SuratTugasSelesaiState extends State<SuratTugasSelesai> {
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: const Color(0xFF522E2E).withOpacity(0.8),
+                              color: MyApp.karantinaBrown.withOpacity(0.8),
                               width: 1,
                             ),
                           ),
@@ -113,7 +114,7 @@ class _SuratTugasSelesaiState extends State<SuratTugasSelesai> {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: _currentPage == index
-                                ? const Color(0xFF522E2E)
+                                ? MyApp.karantinaBrown
                                 : Colors.grey.withOpacity(0.5),
                           ),
                         ),

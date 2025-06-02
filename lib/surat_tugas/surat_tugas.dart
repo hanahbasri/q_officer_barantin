@@ -1,10 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:q_officer_barantin/main.dart';
 import 'package:q_officer_barantin/models/komoditas.dart';
 import 'package:q_officer_barantin/models/lokasi.dart';
 import 'package:q_officer_barantin/models/petugas.dart';
-import 'package:q_officer_barantin/services/surat_tugas_service.dart'; // Import SuratTugasService
 import 'st_aktif.dart';
 import 'st_tertunda.dart';
 import '../databases/db_helper.dart';
@@ -16,10 +16,10 @@ class SuratTugasPage extends StatefulWidget {
   const SuratTugasPage({super.key});
 
   @override
-  _SuratTugasPageState createState() => _SuratTugasPageState();
+  SuratTugasPageState createState() => SuratTugasPageState();
 }
 
-class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProviderStateMixin {
+class SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProviderStateMixin {
   bool hasActiveTask = false;
   StLengkap? suratTugasAktif;
   List<StLengkap> suratTugasTertunda = [];
@@ -82,7 +82,6 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
 
       final db = DatabaseHelper();
 
-      // PERBAIKAN: Ambil status lokal SEBELUM sync
       final localDataBeforeSync = await db.getData('Surat_Tugas');
       Map<String, String> localStatuses = {};
       for (var item in localDataBeforeSync) {
@@ -107,15 +106,12 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
         String currentStatus = item['status'] ?? '';
         final idSuratTugas = item['id_surat_tugas'];
 
-        // PERBAIKAN: Preservasi status lokal yang penting
         if (localStatuses.containsKey(idSuratTugas)) {
           final localStatus = localStatuses[idSuratTugas]!;
 
-          // Prioritaskan status lokal jika sudah 'aktif', 'dikirim', atau 'selesai'
           if (localStatus == 'aktif' || localStatus == 'dikirim' || localStatus == 'selesai') {
             currentStatus = localStatus;
 
-            // Update database untuk mempertahankan status lokal
             if (currentStatus != item['status']) {
               await db.updateStatusTugas(idSuratTugas, currentStatus);
               if (kDebugMode) print('💡 Mempertahankan status lokal "$currentStatus" untuk ${item['no_st']}');
@@ -135,7 +131,6 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
           final tugas = StLengkap.fromDbMap(item, petugasData, lokasiData, komoditasData);
           final tugasWithCorrectedStatus = tugas.copyWith(status: currentStatus);
 
-          // PERBAIKAN: Status 'dikirim' dan 'aktif' masuk kategori aktif
           if (currentStatus == 'aktif' || currentStatus == 'dikirim') {
             if (tempSuratTugasAktif != null) {
               if (kDebugMode) print('⚠️ Ditemukan beberapa tugas aktif/dikirim. Menimpa tugas aktif.');
@@ -209,7 +204,6 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
       if (kDebugMode) print('🔄 Memuat ulang surat tugas setelah menerima tugas...');
       await _loadSuratTugas();
 
-      // Pastikan widget masih mounted sebelum mengakses context atau navigasi
       if (!mounted) {
         if (kDebugMode) print('Widget tidak lagi mounted setelah _loadSuratTugas selesai.');
         return;
@@ -239,7 +233,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
         print('❌ Error saat menerima tugas: $e');
         print('❌ Stack trace: ${StackTrace.current}');
       }
-      if (!mounted) return; // Pastikan mounted sebelum show snackbar
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Gagal menerima tugas. Terjadi kesalahan.')),
       );
@@ -316,7 +310,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
     return Scaffold(
       appBar: AppBar(
         title: Text("Pemeriksaan Lapangan", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Color(0xFF522E2E),
+        backgroundColor: MyApp.karantinaBrown,
         foregroundColor: Colors.white,
         centerTitle: true,
         actions: [
@@ -346,7 +340,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
           children: [
             // ---- AKTIF ----
             ExpansionTile(
-              title: Text("Surat Tugas Aktif", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF522E2E),),),
+              title: Text("Surat Tugas Aktif", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: MyApp.karantinaBrown,),),
               leading: AnimatedBuilder(
                 animation: _animation,
                 builder: (context, child) {
@@ -554,7 +548,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
 
             // --- SELESAI ---
             ExpansionTile(
-              title: const Text("Surat Tugas Selesai", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF522E2E),),),
+              title: const Text("Surat Tugas Selesai", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: MyApp.karantinaBrown,),),
               leading: AnimatedBuilder(
                 animation: _animation,
                 builder: (context, child) {
@@ -646,7 +640,6 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
               }).toList(),
             ),
 
-            // Tombol Sinkronisasi Data (hanya tampil jika ada data yang belum disinkronkan)
             Consumer<AuthProvider>(
               builder: (context, authProvider, child) {
                 return Padding(
@@ -661,7 +654,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
                             });
 
                             final db = DatabaseHelper();
-                            final userNip = authProvider.userId; // Ambil NIP pengguna
+                            final userNip = authProvider.userId;
 
                             if (userNip == null) {
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -673,7 +666,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
                               return;
                             }
 
-                            await db.syncUnsentData(userNip); // Teruskan NIP
+                            await db.syncUnsentData(userNip);
 
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(

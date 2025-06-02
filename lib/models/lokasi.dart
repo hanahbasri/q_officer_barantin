@@ -20,26 +20,26 @@ class Lokasi {
   // Constructor untuk memparsing dari respons API
   factory Lokasi.fromApiResponseMap(Map<String, dynamic> map) {
     return Lokasi(
-      idLokasi: map['id'] ?? '', // API uses 'id'
+      idLokasi: map['id'] ?? '',
       idSuratTugas: map['id_surat_tugas'] ?? '',
-      namaLokasi: map['locationName'] ?? '', // API uses 'locationName'
+      namaLokasi: map['locationName'] ?? '',
       latitude: double.tryParse(map['latitude']?.toString() ?? '0') ?? 0.0,
       longitude: double.tryParse(map['longitude']?.toString() ?? '0') ?? 0.0,
       detail: map['detail'] ?? '',
-      timestamp: map['created_at'] ?? '', // API uses 'created_at'
+      timestamp: map['created_at'] ?? '',
     );
   }
 
   // Constructor untuk memparsing dari database lokal
   factory Lokasi.fromDbMap(Map<String, dynamic> map) {
     return Lokasi(
-      idLokasi: map['id_lokasi']?.toString() ?? '', // DB uses 'id_lokasi'
+      idLokasi: map['id_lokasi']?.toString() ?? '',
       idSuratTugas: map['id_surat_tugas']?.toString() ?? '',
-      namaLokasi: map['nama_lokasi']?.toString() ?? '', // DB uses 'nama_lokasi'
+      namaLokasi: map['nama_lokasi']?.toString() ?? '',
       latitude: double.tryParse(map['latitude']?.toString() ?? '0') ?? 0.0,
       longitude: double.tryParse(map['longitude']?.toString() ?? '0') ?? 0.0,
       detail: map['detail']?.toString() ?? '',
-      timestamp: map['timestamp']?.toString() ?? '', // DB uses 'timestamp'
+      timestamp: map['timestamp']?.toString() ?? '',
     );
   }
 

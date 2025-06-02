@@ -50,7 +50,7 @@ class StLengkap {
       status: status ?? this.status,
       link: link,
       ptkId: ptkId,
-      jenisKarantina: jenisKarantina ?? this.jenisKarantina, // Salin nilai
+      jenisKarantina: jenisKarantina ?? this.jenisKarantina,
       petugas: petugas,
       lokasi: lokasi,
       komoditas: komoditas,

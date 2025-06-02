@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:q_officer_barantin/main.dart';
 import '../services/notification_provider.dart';
 
 class NotifHistoryScreen extends StatelessWidget {
@@ -49,7 +50,7 @@ class NotifHistoryScreen extends StatelessWidget {
                         );
                       },
                       style: TextButton.styleFrom(
-                        foregroundColor: Colors.red, // Ini untuk teks merah
+                        foregroundColor: Colors.red,
                       ),
                       child: const Text('Hapus'),
                     ),
@@ -118,7 +119,7 @@ class NotifHistoryScreen extends StatelessWidget {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
                 side: BorderSide(
-                  color: isRead ? Colors.transparent : Color(0xFF522E2E).withOpacity(0.3),
+                  color: isRead ? Colors.transparent : MyApp.karantinaBrown.withOpacity(0.3),
                   width: 1,
                 ),
               ),
@@ -176,7 +177,7 @@ class NotifHistoryScreen extends StatelessWidget {
                   ],
                 ),
                 leading: CircleAvatar(
-                  backgroundColor: isSuratTugas ? const Color(0xFF522E2E) : Colors.blue[700],
+                  backgroundColor: isSuratTugas ? MyApp.karantinaBrown : MyApp.karantinaBrown,
                   child: Icon(
                     isSuratTugas ? Icons.assignment : Icons.notifications,
                     color: Colors.white,

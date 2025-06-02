@@ -72,7 +72,6 @@ class _LogoutDialogContentState extends State<_LogoutDialogContent> with TickerP
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Icon with shake animation
             SlideTransition(
               position: Tween<Offset>(
                 begin: const Offset(0.05, 0),
@@ -122,7 +121,6 @@ class _LogoutDialogContentState extends State<_LogoutDialogContent> with TickerP
 
             const SizedBox(height: 30),
 
-            // Menggunakan FadeTransition untuk mengontrol animasi secara terpisah
             FadeTransition(
               opacity: CurvedAnimation(
                 parent: ModalRoute.of(context)!.animation!,

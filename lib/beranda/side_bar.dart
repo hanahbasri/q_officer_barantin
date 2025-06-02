@@ -5,7 +5,7 @@ import 'package:q_officer_barantin/models/komoditas.dart';
 import 'package:q_officer_barantin/models/petugas.dart';
 import 'package:q_officer_barantin/services/auth_provider.dart';
 import 'dart:io';
-import 'package:q_officer_barantin/beranda/logout_dialog.dart';
+import 'package:q_officer_barantin/dialog/logout_dialog.dart';
 
 import '../databases/db_helper.dart';
 import '../models/lokasi.dart';
@@ -94,33 +94,27 @@ class SideBar extends StatelessWidget {
                 description: "Tutorial tentang halaman detail surat tugas yang belum diterima",
                 icon: Icons.assignment_outlined,
                 onTap: () async {
-                  // Tutup bottom sheet
                   Navigator.pop(context);
 
-                  // Tutup sidebar
                   Navigator.pop(context);
 
-                  // Ambil data surat tugas tertunda dari database
                   try {
                     final db = DatabaseHelper();
                     final data = await db.getData('Surat_Tugas');
 
-                    // Cari surat tugas yang statusnya tertunda
                     StLengkap? suratTugasTertunda;
 
                     for (var item in data) {
                       final status = item['status'] ?? '';
 
-                      // Also consider 'Proses' as 'tertunda' for tutorial purposes
                       if (status == 'tertunda' || status == 'Proses') {
-                        // Ambil data terkait dari database
+
                         final futures = await Future.wait([
                           db.getPetugasById(item['id_surat_tugas']),
                           db.getLokasiById(item['id_surat_tugas']),
                           db.getKomoditasById(item['id_surat_tugas']),
                         ]);
 
-                        // Convert Map to Model objects using fromDbMap
                         final petugasList = (futures[0] as List).map((p) => Petugas.fromDbMap(p)).toList();
                         final lokasiList = (futures[1] as List).map((l) => Lokasi.fromDbMap(l)).toList();
                         final komoditasList = (futures[2] as List).map((k) => Komoditas.fromDbMap(k)).toList();
@@ -136,14 +130,12 @@ class SideBar extends StatelessWidget {
                     }
 
                     if (suratTugasTertunda != null) {
-                      // Navigasi ke halaman tutorial dengan data asli
                       Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => SuratTugasTertunda(
                             suratTugas: suratTugasTertunda!,
                             onTerimaTugas: () async {
-                              // Do nothing for tutorial - just show snackbar
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text('Ini adalah mode tutorial - tombol tidak aktif'),
@@ -152,12 +144,11 @@ class SideBar extends StatelessWidget {
                               );
                             },
                             hasActiveTask: false,
-                            showTutorialImmediately: true, // Flag khusus untuk tutorial
+                            showTutorialImmediately: true,
                           ),
                         ),
                       );
                     } else {
-                      // Jika tidak ada data tertunda
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('Tidak ada surat tugas tertunda untuk tutorial'),

@@ -347,7 +347,7 @@ class SuratTugasService {
                   if (kDebugMode) {
                     print('✅ Berhasil mengirim hasil pemeriksaan ke server');
                     print('📝 Pesan server: ${responseData['message'] ?? 'Tidak ada pesan'}');
-                    print('🔢 Status Code: ${response.statusCode}'); // Tambahan untuk debugging
+                    print('🔢 Status Code: ${response.statusCode}');
                   }
                   return true;
                 } else {
@@ -366,7 +366,7 @@ class SuratTugasService {
                 return false;
               }
             }
-            // Jika response tidak sesuai format yang diharapkan
+
             if (kDebugMode) {
               print('⚠️ Format response tidak dikenal, tapi status code sukses');
               print('🔢 Status Code: ${response.statusCode}');

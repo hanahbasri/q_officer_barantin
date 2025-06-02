@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -31,12 +32,12 @@ class FormPeriksa extends StatefulWidget {
   });
 
   @override
-  _FormPeriksaState createState() => _FormPeriksaState();
+  FormPeriksaState createState() => FormPeriksaState();
 }
 
-class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStateMixin {
+class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
-  final uuid = Uuid();
+  final uuid = const Uuid();
   late String idPemeriksaan;
   List<Lokasi> lokasiList = [];
   List<Komoditas> komoditasList = [];
@@ -76,10 +77,14 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
 
   List<String> targetAndTemuanList = [];
   bool _isLoadingDropdownData = true;
+  static const int _maxPhotos = 4;
+  late DatabaseHelper _dbHelper;
+
 
   @override
   void initState() {
     super.initState();
+    _dbHelper = DatabaseHelper();
     idPemeriksaan = uuid.v4();
     lokasiList = widget.suratTugas.lokasi;
     komoditasList = widget.suratTugas.komoditas;
@@ -107,24 +112,88 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
   }
 
   Future<void> _loadTargetAndTemuanList() async {
+    if (!mounted) return;
     setState(() {
       _isLoadingDropdownData = true;
     });
-    try {
-      final data = await SuratTugasService.getTargetUjiData(
-          widget.suratTugas.jenisKarantina, 'uraian');
+
+    String jenisKarantina = widget.suratTugas.jenisKarantina ?? "";
+    if (jenisKarantina.isEmpty) {
+      if (kDebugMode) {
+        print("⚠️ Jenis karantina kosong, tidak dapat memuat data target/temuan.");
+      }
       if (mounted) {
         setState(() {
-          targetAndTemuanList = data;
-          if (targetAndTemuanList.isNotEmpty) {
-            selectedTarget ??= targetAndTemuanList.first;
-            selectedTemuan ??= targetAndTemuanList.first;
-          }
+          targetAndTemuanList = [];
+          _isLoadingDropdownData = false;
         });
+      }
+      return;
+    }
+
+    try {
+      List<String> localData = await _dbHelper.getLocalMasterTargetTemuan(jenisKarantina);
+
+      if (localData.isNotEmpty) {
+        if (kDebugMode) {
+          print("📦 Data target/temuan dimuat dari DB Lokal untuk jenis: $jenisKarantina");
+        }
+        if (mounted) {
+          setState(() {
+            targetAndTemuanList = localData;
+            if (targetAndTemuanList.isNotEmpty) {
+              selectedTarget ??= targetAndTemuanList.first;
+              selectedTemuan ??= targetAndTemuanList.first;
+            }
+          });
+        }
+      } else {
+        if (kDebugMode) {
+          print("🌐 Data target/temuan tidak ditemukan lokal, mengambil dari API untuk jenis: $jenisKarantina");
+        }
+        final connectivityResult = await Connectivity().checkConnectivity();
+        bool isOnline = connectivityResult == ConnectivityResult.mobile ||
+            connectivityResult == ConnectivityResult.wifi ||
+            connectivityResult == ConnectivityResult.ethernet;
+
+        if (isOnline) {
+          final apiData = await SuratTugasService.getTargetUjiData(jenisKarantina, 'uraian');
+          if (mounted) {
+            setState(() {
+              targetAndTemuanList = apiData;
+              if (targetAndTemuanList.isNotEmpty) {
+                selectedTarget ??= targetAndTemuanList.first;
+                selectedTemuan ??= targetAndTemuanList.first;
+                _dbHelper.insertOrUpdateMasterTargetTemuan(jenisKarantina, apiData);
+                if (kDebugMode) {
+                  print("💾 Data target/temuan dari API disimpan ke DB Lokal untuk jenis: $jenisKarantina");
+                }
+              } else {
+                if (kDebugMode) {
+                  print("⚠️ Data target/temuan dari API kosong untuk jenis: $jenisKarantina");
+                }
+              }
+            });
+          }
+        } else {
+          if (kDebugMode) {
+            print("📴 Tidak ada koneksi internet dan data lokal tidak tersedia untuk target/temuan jenis: $jenisKarantina.");
+          }
+          if (mounted) {
+            setState(() {
+              targetAndTemuanList = [];
+            });
+          }
+        }
       }
     } catch (e) {
       if (kDebugMode) {
-        print("Error loading target and temuan list: $e");
+        print("❌ Error loading target and temuan list: $e");
+      }
+      if (mounted) {
+        setState(() {
+          targetAndTemuanList = [];
+        });
       }
     } finally {
       if (mounted) {
@@ -160,9 +229,9 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
     }
 
     try {
-      final db = DatabaseHelper();
-      final posisi = await db.getLocation();
+      final posisi = await _dbHelper.getLocation();
       if (posisi != null) {
+        if (!mounted) return;
         setState(() {
           devicePosition = posisi;
           latitude = posisi.latitude;
@@ -170,7 +239,6 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
           waktuAmbilPosisi = DateTime.now().toIso8601String();
         });
 
-        if (!mounted) return;
         if (kDebugMode) {
           print("Lokasi berhasil: lat=$latitude, long=$longitude");
         }
@@ -195,65 +263,11 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
         print("🔧 Mulai kompresi gambar - Ukuran awal: ${originalBytes.length} bytes (${(originalBytes.length / 1024).toStringAsFixed(2)} KB)");
       }
 
-      const int targetSize = 25 * 1024; // Target 25KB per foto
+      const int finalTargetSize = 28 * 1024;
+      const int intermediateTargetSize = 50 * 1024;
 
-      // Lakukan kompresi dengan parameter yang sudah dioptimasi
+      // Kompresi tahap 1
       Uint8List? compressedBytes = await FlutterImageCompress.compressWithFile(
-        imageFile.path,
-        minWidth: 640,
-        minHeight: 480,
-        quality: 60, // Mulai dengan kualitas sedang
-        format: CompressFormat.jpeg,
-        keepExif: false, // Buang EXIF data untuk menghemat space
-      );
-
-      if (compressedBytes == null) {
-        throw Exception("Gagal kompresi gambar");
-      }
-
-      // Jika masih terlalu besar, lakukan kompresi bertahap
-      if (compressedBytes.length > targetSize) {
-        compressedBytes = await FlutterImageCompress.compressWithList(
-          compressedBytes,
-          minWidth: 500,
-          minHeight: 375,
-          quality: 40,
-          format: CompressFormat.jpeg,
-        );
-      }
-
-      // Kompresi final jika masih perlu
-      if (compressedBytes.length > targetSize) {
-        compressedBytes = await FlutterImageCompress.compressWithList(
-          compressedBytes,
-          minWidth: 400,
-          minHeight: 300,
-          quality: 25,
-          format: CompressFormat.jpeg,
-        );
-      }
-
-      final result = compressedBytes;
-
-      if (kDebugMode) {
-        print("✅ Kompresi selesai - Ukuran akhir: ${result.length} bytes (${(result.length / 1024).toStringAsFixed(2)} KB)");
-      }
-
-      return result;
-    } catch (e) {
-      if (kDebugMode) {
-        print("❌ Error saat kompresi: $e");
-      }
-      // Fallback ke ukuran asli jika kompresi gagal
-      return await imageFile.readAsBytes();
-    }
-  }
-
-  // FIXED: Proses gambar dengan isolate untuk mencegah UI freeze
-  Future<Map<String, dynamic>> _processImageAsync(XFile imageFile) async {
-    try {
-      // Kompresi untuk display (tidak terlalu agresif)
-      final displayBytes = await FlutterImageCompress.compressWithFile(
         imageFile.path,
         minWidth: 800,
         minHeight: 600,
@@ -262,20 +276,101 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
         keepExif: false,
       );
 
-      // Kompresi untuk server (lebih agresif)
+      if (compressedBytes == null) {
+        throw Exception("Kompresi tahap 1 gagal.");
+      }
+
+      // Kompresi tahap 2 jika masih terlalu besar
+      if (compressedBytes.length > intermediateTargetSize) {
+        if (kDebugMode) print("🔧 Ukuran > ${intermediateTargetSize / 1024}KB (${compressedBytes.length / 1024}KB), kompresi tahap 2...");
+        Uint8List? tempBytes = await FlutterImageCompress.compressWithList(
+          compressedBytes,
+          minWidth: 640,
+          minHeight: 480,
+          quality: 55, // Turunkan kualitas secara bertahap
+          format: CompressFormat.jpeg,
+        );
+        compressedBytes = tempBytes; // Gunakan hasil kompresi jika berhasil
+      }
+
+      // Kompresi tahap 3 jika masih terlalu besar
+      if (compressedBytes.length > finalTargetSize) {
+        if (kDebugMode) print("🔧 Ukuran > ${finalTargetSize / 1024}KB (${compressedBytes.length / 1024}KB), kompresi tahap 3...");
+        Uint8List? tempBytes = await FlutterImageCompress.compressWithList(
+          compressedBytes,
+          minWidth: 500,
+          minHeight: 375,
+          quality: 40, // Kualitas lebih rendah untuk mencapai target
+          format: CompressFormat.jpeg,
+        );
+        compressedBytes = tempBytes; // Gunakan hasil kompresi jika berhasil
+      }
+
+      if (compressedBytes.length > finalTargetSize + (5 * 1024)) {
+        if (kDebugMode) {
+          print("⚠️ PERINGATAN: Ukuran foto setelah kompresi (${(compressedBytes.length / 1024).toStringAsFixed(2)} KB) mungkin masih terlalu besar untuk target ${finalTargetSize/1024}KB.");
+        }
+      }
+
+      final result = compressedBytes;
+
+      if (kDebugMode) {
+        print("✅ Kompresi selesai - Ukuran akhir: ${result.length} bytes (${(result.length / 1024).toStringAsFixed(2)} KB)");
+      }
+      return result;
+
+    } catch (e) {
+      if (kDebugMode) {
+        print("❌ Error saat kompresi (_compressImageOptimized) untuk ${imageFile.name}: $e");
+      }
+      // Fallback: coba kompresi sederhana jika optimasi gagal
+      try {
+        Uint8List? fallbackBytes = await FlutterImageCompress.compressWithFile(
+          imageFile.path,
+          minWidth: 800,
+          minHeight: 600,
+          quality: 60,
+          format: CompressFormat.jpeg,
+          keepExif: false,
+        );
+        if (fallbackBytes != null) {
+          if (kDebugMode) print("⚠️ Menggunakan kompresi fallback untuk ${imageFile.name} karena error. Ukuran: ${(fallbackBytes.length / 1024).toStringAsFixed(2)} KB");
+          return fallbackBytes;
+        }
+      } catch (fe) {
+        if (kDebugMode) print("❌ Error pada kompresi fallback untuk ${imageFile.name}: $fe");
+      }
+      // Jika semua gagal, kembalikan byte asli (berpotensi besar)
+      if (kDebugMode) print("⚠️⚠️ Semua upaya kompresi gagal untuk ${imageFile.name}, mengembalikan byte asli. Ini bisa sangat besar!");
+      return await imageFile.readAsBytes();
+    }
+  }
+
+
+  Future<Map<String, dynamic>> _processImageAsync(XFile imageFile) async {
+    try {
+      final displayBytes = await FlutterImageCompress.compressWithFile(
+        imageFile.path,
+        minWidth: 800,
+        minHeight: 600,
+        quality: 75,
+        format: CompressFormat.jpeg,
+        keepExif: false,
+      );
+
+      // Kompresi untuk dikirim ke server (ukuran lebih kecil)
       final serverBytes = await _compressImageOptimized(imageFile);
 
       return {
-        'display': displayBytes ?? await imageFile.readAsBytes(),
+        'display': displayBytes ?? await imageFile.readAsBytes(), // Fallback jika displayBytes null
         'compressed': serverBytes,
         'success': true,
       };
     } catch (e) {
       if (kDebugMode) {
-        print("❌ Error processing image: $e");
+        print("❌ Error processing image ${imageFile.name}: $e");
       }
-
-      // Fallback: gunakan gambar asli
+      // Fallback: gunakan gambar asli jika pemrosesan gagal total
       final bytes = await imageFile.readAsBytes();
       return {
         'display': bytes,
@@ -286,9 +381,7 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
     }
   }
 
-  // FIXED: Perbaiki logika image picking untuk menghindari "already active" error
   Future<void> pickImages(BuildContext context, ImageSource source, {bool isMulti = false}) async {
-    // Cek apakah sedang dalam proses picking
     if (_isPickingImage) {
       if (kDebugMode) {
         print("⚠️ Image picker sedang aktif, mengabaikan request baru");
@@ -296,22 +389,28 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
       return;
     }
 
+    int remainingSlots = _maxPhotos - _uploadedPhotos.length;
+    if (remainingSlots <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Batas maksimal $_maxPhotos foto sudah tercapai.')),
+        );
+      }
+      return;
+    }
+
     try {
+      if (!mounted) return;
       setState(() {
         _isPickingImage = true;
       });
 
-      // Tampilkan loading indicator
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Row(
               children: [
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
+                SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
                 SizedBox(width: 16),
                 Text('Mengambil foto...'),
               ],
@@ -324,59 +423,78 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
       List<XFile> tempXFiles = [];
 
       if (isMulti) {
-        // FIXED: Tambahkan timeout dan error handling
         final List<XFile> selectedImages = await _picker.pickMultiImage(
-          imageQuality: 80, // Kualitas yang lebih baik untuk mengurangi kompresi bertahap
-          limit: 5, // Batasi jumlah foto untuk menghindari overload
+          imageQuality: 80,
         ).timeout(
-          const Duration(seconds: 30),
+          const Duration(seconds: 45),
           onTimeout: () {
-            throw Exception("Timeout saat memilih foto");
+            throw TimeoutException("Waktu memilih foto dari galeri habis.");
           },
         );
 
-        if (selectedImages.isEmpty) return;
-        tempXFiles = selectedImages;
+        if (selectedImages.isEmpty && mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+        }
+
+        if (selectedImages.length > remainingSlots) {
+          tempXFiles = selectedImages.sublist(0, remainingSlots);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Hanya ${tempXFiles.length} foto pertama yang diambil karena batas maksimal.')),
+            );
+          }
+        } else {
+          tempXFiles = selectedImages;
+        }
+
+
       } else {
-        // FIXED: Tambahkan timeout untuk single image
         final XFile? singleImage = await _picker.pickImage(
           source: source,
           imageQuality: 80,
-          maxWidth: 1920, // Batasi resolusi maksimal
+          maxWidth: 1920, // Dimensi maksimal dari kamera
           maxHeight: 1080,
         ).timeout(
-          const Duration(seconds: 30),
+          const Duration(seconds: 45),
           onTimeout: () {
-            throw Exception("Timeout saat mengambil foto");
+            throw TimeoutException("Waktu mengambil foto dengan kamera habis.");
           },
         );
 
-        if (singleImage == null) return;
-        tempXFiles = [singleImage];
+        if (singleImage == null && mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          if (!mounted) return;
+          setState(() { _isPickingImage = false; });
+          return;
+        }
+        if (singleImage != null) tempXFiles = [singleImage];
       }
+
+      if (tempXFiles.isEmpty) {
+        if (!mounted) return;
+        setState(() { _isPickingImage = false; });
+        return;
+      }
+
 
       if (kDebugMode) {
         print("📷 Memproses ${tempXFiles.length} foto yang dipilih");
       }
 
-      // Proses foto satu per satu untuk menghindari memory overload
       List<Uint8List> newDisplayPhotos = [];
       List<Uint8List> newServerPhotos = [];
       List<XFile> newXFiles = [];
+      int successCount = 0;
 
       for (int i = 0; i < tempXFiles.length; i++) {
-        final image = tempXFiles[i];
-
-        // Tampilkan progress
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).clearSnackBars();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Memproses foto ${i + 1} dari ${tempXFiles.length}...'),
-              duration: const Duration(milliseconds: 500),
-            ),
-          );
+        if ((_uploadedPhotos.length + newDisplayPhotos.length) >= _maxPhotos) {
+          if (kDebugMode) print("ℹ️ Batas maksimal foto tercapai saat iterasi, menghentikan penambahan.");
+          break;
         }
+
+        final image = tempXFiles[i];
+        if (kDebugMode) print("⏳ Memproses foto: ${image.name}");
+
 
         try {
           final result = await _processImageAsync(image);
@@ -385,28 +503,44 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
             newDisplayPhotos.add(result['display']);
             newServerPhotos.add(result['compressed']);
             newXFiles.add(image);
+            successCount++;
 
             if (kDebugMode) {
-              print("✅ Foto ${i + 1} berhasil diproses:");
+              print("✅ Foto ${image.name} berhasil diproses:");
               print("   - Ukuran display: ${result['display'].length} bytes");
               print("   - Ukuran server: ${result['compressed'].length} bytes");
             }
           } else {
             if (kDebugMode) {
-              print("❌ Gagal memproses foto ${i + 1}: ${result['error']}");
+              print("❌ Gagal memproses foto ${image.name}: ${result['error']}");
+            }
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Gagal memproses foto: ${image.name}. Error: ${result['error'].toString().substring(0, (result['error'].toString().length > 50) ? 50 : result['error'].toString().length)}...'),
+                  backgroundColor: Colors.orange,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
             }
           }
         } catch (e) {
           if (kDebugMode) {
-            print("❌ Error memproses foto ${i + 1}: $e");
+            print("❌ Error berat saat memproses foto ${image.name}: $e");
+          }
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error saat memproses ${image.name}: Coba lagi.'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 3),
+              ),
+            );
           }
         }
-
-        // Beri jeda kecil untuk menghindari overload
-        await Future.delayed(const Duration(milliseconds: 100));
+        await Future.delayed(const Duration(milliseconds: 100)); // Jeda kecil
       }
 
-      // Update state setelah semua foto diproses
       if (mounted) {
         setState(() {
           _uploadedPhotos.addAll(newDisplayPhotos);
@@ -419,34 +553,53 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
         });
       }
 
-      // Tampilkan hasil akhir
       if (context.mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✅ ${newDisplayPhotos.length} foto berhasil ditambahkan'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        if (successCount > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ $successCount foto berhasil ditambahkan.'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        } else if (tempXFiles.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Tidak ada foto yang berhasil diproses. Coba lagi dengan foto lain.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
       }
 
-    } catch (e) {
+    } catch (e) { // Error utama di pickImages (misal, timeout picker, permission)
       if (kDebugMode) {
-        print("❌ Error picking images: $e");
+        print("❌ Error utama di pickImages: $e");
       }
       if (context.mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
+        String errorMessage = 'Terjadi kesalahan tidak diketahui.';
+        if (e is TimeoutException) {
+          errorMessage = e.message ?? 'Waktu habis saat memilih/mengambil foto.';
+        } else if (e.toString().toLowerCase().contains("permission")) {
+          errorMessage = 'Izin akses galeri/kamera ditolak.';
+        }
+        else {
+          var parts = e.toString().split(':');
+          errorMessage = parts.isNotEmpty ? parts.last.trim() : e.toString();
+          if (errorMessage.length > 100) errorMessage = "${errorMessage.substring(0,97)}...";
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ Error: ${e.toString()}'),
+            content: Text('❌ Error: $errorMessage'),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
     } finally {
-      // Pastikan flag di-reset dalam kondisi apapun
       if (mounted) {
         setState(() {
           _isPickingImage = false;
@@ -457,6 +610,7 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
 
   void deleteImage(int index) {
     if (index >= 0 && index < _uploadedPhotos.length) {
+      if (!mounted) return;
       setState(() {
         _uploadedPhotos.removeAt(index);
         _pickedXFiles.removeAt(index);
@@ -483,14 +637,15 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
       totalCompressedSize += photo.length;
     }
 
-    int estimatedBase64Size = (totalCompressedSize * 1.33).round();
-    int estimatedJsonOverhead = 2000;
+    int estimatedBase64Size = (totalCompressedSize * 4 / 3).ceil();
+    int estimatedJsonOverhead = 2000 + (_compressedPhotosForServer.length * 100);
     int totalEstimatedPayload = estimatedBase64Size + estimatedJsonOverhead;
 
     if (kDebugMode) {
       print("🔍 Validasi ukuran payload:");
       print("   - Jumlah foto: ${_compressedPhotosForServer.length}");
-      print("   - Ukuran total compressed: ${(totalCompressedSize / 1024).toStringAsFixed(2)} KB");
+      print("   - Ukuran total compressed (binary): ${(totalCompressedSize / 1024).toStringAsFixed(2)} KB");
+      print("   - Estimasi Base64 size: ${(estimatedBase64Size / 1024).toStringAsFixed(2)} KB");
       print("   - Estimasi payload total: ${(totalEstimatedPayload / 1024).toStringAsFixed(2)} KB");
     }
 
@@ -502,20 +657,24 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
       }
       return false;
     }
-
+    if (kDebugMode) print("✅ Ukuran payload (${(totalEstimatedPayload / 1024).toStringAsFixed(2)} KB) dalam batas.");
     return true;
   }
 
   void _updateFieldError(String field, bool hasError) {
+    if (!mounted) return;
     setState(() {
       _fieldErrors[field] = hasError;
     });
   }
 
   void _resetForm() {
-    _formKey.currentState!.reset();
+    if (_formKey.currentState != null) {
+      _formKey.currentState!.reset();
+    }
     _metodeController.clear();
     _catatanController.clear();
+    if (!mounted) return;
     setState(() {
       selectedTarget = targetAndTemuanList.isNotEmpty ? targetAndTemuanList.first : null;
       selectedTemuan = targetAndTemuanList.isNotEmpty ? targetAndTemuanList.first : null;
@@ -534,9 +693,10 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
   }
 
   Future<void> _showCustomDialog(BuildContext context, String title, String message, IconData icon, Color iconColor) async {
+    if (!mounted) return;
     await showDialog(
       context: context,
-      barrierDismissible: false, // User must tap button!
+      barrierDismissible: false,
       builder: (ctx) {
         return Center(
           child: TweenAnimationBuilder(
@@ -556,7 +716,7 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
                       borderRadius: BorderRadius.circular(15),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.2),
+                          color: Colors.black.withOpacity(0.2),
                           blurRadius: 10,
                           spreadRadius: 2,
                         ),
@@ -642,7 +802,9 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
     );
   }
 
+
   void _handleSubmit(BuildContext context) async {
+    if (!mounted) return;
     setState(() {
       _formSubmitted = true;
       _updateFieldError('lokasi', selectedLokasiId == null);
@@ -653,7 +815,7 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
       _updateFieldError('foto', _compressedPhotosForServer.isEmpty);
     });
 
-    if (!_formKey.currentState!.validate() ||
+    if (_formKey.currentState == null || !_formKey.currentState!.validate() ||
         selectedLokasiId == null ||
         selectedTarget == null ||
         selectedTemuan == null ||
@@ -662,7 +824,7 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text(
-              "Harap lengkapi seluruh isian pada form pemeriksaan!")),
+              "Harap lengkapi seluruh isian pada form pemeriksaan dan upload minimal 1 foto!")),
         );
       }
       return;
@@ -670,10 +832,19 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
 
     if (!_validatePayloadSize()) {
       if (mounted) {
+        // Calculate current estimated payload for the message
+        int totalCompressedSize = _compressedPhotosForServer.map((e) => e.length).reduce((a, b) => a + b);
+        int estimatedBase64Size = (totalCompressedSize * 4 / 3).ceil();
+        int estimatedJsonOverhead = 2000 + (_compressedPhotosForServer.length * 100);
+        int totalEstimatedPayload = estimatedBase64Size + estimatedJsonOverhead;
+        String currentSizeKB = (totalEstimatedPayload / 1024).toStringAsFixed(0);
+        String maxSizeKB = (100 * 1024 / 1024).toStringAsFixed(0);
+
+
         await _showCustomDialog(
           context,
           "Foto Terlalu Besar",
-          "Total ukuran foto melebihi batas maksimal server (sekitar 100KB setelah dienkripsi). Harap kurangi jumlah foto atau gunakan foto dengan resolusi/kualitas lebih rendah.",
+          "Total ukuran foto melebihi batas maksimal (${maxSizeKB}KB). Harap kurangi jumlah foto atau gunakan foto dengan resolusi/kualitas lebih rendah. Saat ini sekitar: ${currentSizeKB}KB.",
           Icons.photo_size_select_actual_outlined,
           Colors.orange.shade700,
         );
@@ -681,6 +852,7 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
       return;
     }
 
+    if (!mounted) return;
     setState(() {
       _isSubmitting = true;
     });
@@ -693,6 +865,7 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
     }
 
     if (userNip.isEmpty) {
+      if (!mounted) return;
       setState(() {
         _isSubmitting = false;
       });
@@ -722,23 +895,24 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
       temuan: selectedTemuan!,
       catatan: _catatanController.text,
       tanggal: waktuAmbilPosisi ?? DateTime.now().toIso8601String(),
-      syncData: 0,
+      syncData: 0, // Default ke 0 (belum sinkron)
     );
 
-    final dbHelper = DatabaseHelper();
     bool isOnline = false;
 
     try {
-      var connectivityResult = await (Connectivity().checkConnectivity());
-      isOnline = (connectivityResult == ConnectivityResult.mobile ||
-          connectivityResult == ConnectivityResult.wifi);
+      final connectivityResult = await Connectivity().checkConnectivity();
+      isOnline = connectivityResult == ConnectivityResult.mobile ||
+          connectivityResult == ConnectivityResult.wifi ||
+          connectivityResult == ConnectivityResult.ethernet;
     } catch (e) {
       if (kDebugMode) print("Error checking connectivity: $e");
     }
 
+
     if (isOnline) {
       if (kDebugMode) {
-        print("🚀 Mengirim dengan foto yang sudah dikompresi ke server");
+        print("🚀 Mengirim dengan foto yang sudah dikompresi ke server (${_compressedPhotosForServer.length} foto)");
       }
 
       final bool success = await SuratTugasService.submitHasilPemeriksaan(
@@ -747,47 +921,39 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
           userNip
       );
 
-      if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _isSubmitting = false;
+      });
 
       if (success) {
-        // Simpan hasil pemeriksaan yang sudah ter-sync
         final syncedHasil = hasil.toMap();
-        syncedHasil['syncdata'] = 1;
-        await dbHelper.insert('Hasil_Pemeriksaan', syncedHasil);
+        syncedHasil['syncdata'] = 1; // Tandai sudah sinkron
+        await _dbHelper.insert('Hasil_Pemeriksaan', syncedHasil);
 
-        for (var photoBytes in _uploadedPhotos) {
-          await dbHelper.getImagetoDatabase(photoBytes, idPemeriksaan);
+        for (var photoBytes in _uploadedPhotos) { // Simpan foto display (UI version) ke DB
+          await _dbHelper.getImagetoDatabase(photoBytes, idPemeriksaan);
         }
-
-        await dbHelper.updateStatusTugas(widget.idSuratTugas, 'dikirim');
-
-
+        await _dbHelper.updateStatusTugas(widget.idSuratTugas, 'dikirim');
         _resetForm();
 
         if (mounted) {
           await _showCustomDialog(
             context,
             "Berhasil Dikirim",
-            "Hasil pemeriksaan telah berhasil dikirim! Anda dapat melanjutkan pemeriksaan atau menyelesaikan tugas.",
+            "Hasil pemeriksaan telah berhasil dikirim! Anda dapat melanjutkan pemeriksaan kembali atau menyelesaikan tugas.",
             Icons.check_circle_outline_rounded,
-            Color(0xFF522E2E),
+            const Color(0xFF522E2E),
           );
-
-          // PERBAIKAN: Return true untuk update parent tapi jangan keluar dari halaman
-          // Biarkan user tetap bisa membuat pemeriksaan lain atau selesaikan tugas manual
-          Navigator.of(context).pop(true);
+          if (context.mounted) Navigator.of(context).pop(true); // Kembali dan tandai sukses
         }
       } else {
-        // Jika gagal kirim ke server, tetap simpan lokal
-        final unsyncedHasil = hasil.toMap();
-        await dbHelper.insert('Hasil_Pemeriksaan', unsyncedHasil);
+        // Jika gagal kirim ke server, simpan lokal sebagai unsynced
+        final unsyncedHasil = hasil.toMap(); // syncData default 0
+        await _dbHelper.insert('Hasil_Pemeriksaan', unsyncedHasil);
 
-        for (var photoBytes in _uploadedPhotos) {
-          await dbHelper.getImagetoDatabase(photoBytes, idPemeriksaan);
+        for (var photoBytes in _uploadedPhotos) { // Simpan foto display
+          await _dbHelper.getImagetoDatabase(photoBytes, idPemeriksaan);
         }
 
         _resetForm();
@@ -800,27 +966,21 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
             Icons.cloud_upload_outlined,
             Colors.blueGrey.shade600,
           );
+          // Tidak pop, atau pop(false) agar user tahu gagal tapi data aman
         }
       }
-    } else {
-      // PERBAIKAN: Untuk mode offline, juga jangan langsung selesaikan tugas
-      if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-        });
-      }
-
-      // Simpan hasil pemeriksaan offline
-      final unsyncedHasil = hasil.toMap();
-      await dbHelper.insert('Hasil_Pemeriksaan', unsyncedHasil);
+    } else { // Offline
+      if (!mounted) return;
+      setState(() {
+        _isSubmitting = false;
+      });
+      final unsyncedHasil = hasil.toMap(); // syncData default 0
+      await _dbHelper.insert('Hasil_Pemeriksaan', unsyncedHasil);
 
       for (var photoBytes in _uploadedPhotos) {
-        await dbHelper.getImagetoDatabase(photoBytes, idPemeriksaan);
+        await _dbHelper.getImagetoDatabase(photoBytes, idPemeriksaan);
       }
-
-      // Update status ke 'dikirim' meskipun offline (akan di-sync nanti)
-      await dbHelper.updateStatusTugas(widget.idSuratTugas, 'dikirim');
-
+      await _dbHelper.updateStatusTugas(widget.idSuratTugas, 'tersimpan_offline');
       _resetForm();
 
       if (mounted) {
@@ -831,13 +991,25 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
           Icons.cloud_queue_outlined,
           Colors.blue.shade600,
         );
-
-        Navigator.of(context).pop(true);
+        if (context.mounted) Navigator.of(context).pop(true); // Kembali, tandai bahwa form selesai (meski offline)
       }
     }
   }
 
+
   void _showImagePicker(BuildContext context) {
+    if (!mounted) return;
+    // Cek batasan foto sebelum menampilkan pilihan
+    if (_uploadedPhotos.length >= _maxPhotos) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Anda sudah mengupload maksimal $_maxPhotos foto.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -864,21 +1036,36 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
                           icon: Icons.camera_alt,
                           label: "Kamera",
                           onTap: () {
-                            Navigator.pop(context);
-                            pickImages(context, ImageSource.camera);
+                            Navigator.pop(ctx);
+                            if (!mounted) return;
+                            if (_uploadedPhotos.length < _maxPhotos) {
+                              pickImages(context, ImageSource.camera);
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Batas maksimal foto tercapai.')),
+                              );
+                            }
                           },
                         ),
                         _buildImageSourceOption(
                           icon: Icons.photo_library,
                           label: "Galeri",
                           onTap: () {
-                            Navigator.pop(context);
-                            pickImages(
-                                context, ImageSource.gallery, isMulti: true);
+                            Navigator.pop(ctx); // Tutup bottom sheet dulu
+                            if (!mounted) return;
+                            if (_uploadedPhotos.length < _maxPhotos) {
+                              int currentRemainingSlots = _maxPhotos - _uploadedPhotos.length;
+                              pickImages(context, ImageSource.gallery, isMulti: currentRemainingSlots > 1);
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Batas maksimal foto tercapai.')),
+                              );
+                            }
                           },
                         ),
                       ],
                     ),
+                    const SizedBox(height: 16),
                   ],
                 ),
               ),
@@ -887,7 +1074,6 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
     );
   }
 
-  // Function to create consistent input decoration
   InputDecoration _getInputDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
@@ -907,21 +1093,20 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
         borderSide: const BorderSide(color: Colors.red, width: 1),
         borderRadius: BorderRadius.circular(5),
       ),
-      border: OutlineInputBorder(
+      border: OutlineInputBorder( // Default border
         borderSide: const BorderSide(color: Color(0xFF522E2E), width: 1),
         borderRadius: BorderRadius.circular(5),
       ),
     );
   }
 
-  // Custom validator that only shows error if form was submitted
   String? _customValidator(String? value, String fieldName) {
     bool hasError = _formSubmitted && (value == null || value.isEmpty);
+    if (!mounted) return null; // Check mounted before calling _updateFieldError
     _updateFieldError(fieldName, hasError);
     return hasError ? "Wajib diisi" : null;
   }
 
-  // Searchable dropdown widget
   Widget _buildSearchableDropdown<T>({
     required String title,
     required List<T> items,
@@ -931,7 +1116,6 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
     required Function(T?) onChanged,
     required bool isRequired,
     required String fieldName,
-    String? Function(T?)? validator,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -945,6 +1129,7 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
           onChanged: (value) {
             onChanged(value);
             if (_formSubmitted) {
+              if (!mounted) return;
               setState(() {
                 _fieldErrors[fieldName] = value == null;
               });
@@ -971,9 +1156,17 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
               ),
               focusedBorder: OutlineInputBorder(
                 borderSide: BorderSide(
-                    color: _fieldErrors[fieldName] == true ? Colors.red : const Color(0xFF522E2E),
+                    color: _fieldErrors[fieldName] == true ? Colors.red : const Color(0xFF522E2E), // Keep color consistent or highlight
                     width: 1
                 ),
+                borderRadius: BorderRadius.circular(5),
+              ),
+              errorBorder: OutlineInputBorder(
+                borderSide: const BorderSide(color: Colors.red, width: 1),
+                borderRadius: BorderRadius.circular(5),
+              ),
+              focusedErrorBorder: OutlineInputBorder(
+                borderSide: const BorderSide(color: Colors.red, width: 1.5),
                 borderRadius: BorderRadius.circular(5),
               ),
               errorText: _fieldErrors[fieldName] == true ? "Wajib diisi" : null,
@@ -1000,12 +1193,13 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
             ),
             menuProps: MenuProps(
                 backgroundColor: Colors.white,
-                elevation: 2,
+                elevation: 2, // Shadow for the popup menu
                 shape: RoundedRectangleBorder(
                   side: BorderSide(color: Colors.grey[400]!, width: 1),
                   borderRadius: BorderRadius.circular(8),
                 )
             ),
+            // constraints: BoxConstraints(maxHeight: 300),
           ),
         ),
         const SizedBox(height: 16),
@@ -1015,6 +1209,7 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
 
   @override
   Widget build(BuildContext context) {
+    bool canUploadMore = _uploadedPhotos.length < _maxPhotos;
     return Scaffold(
       appBar: AppBar(title: const Text("Form Pemeriksaan")),
       body: Stack(
@@ -1025,21 +1220,21 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
               key: _formKey,
               child: ListView(
                 children: [
-                  // Lokasi searchable dropdown
                   _buildSearchableDropdown<Lokasi>(
                     title: "Lokasi",
                     items: lokasiList,
                     itemAsString: (lok) => lok.namaLokasi,
                     selectedItem: lokasiList.firstWhere(
                           (element) => element.idLokasi == selectedLokasiId,
-                      orElse: () => lokasiList.isNotEmpty ? lokasiList.first : Lokasi(
-                        idLokasi: '', idSuratTugas: '', namaLokasi: '', latitude: 0, longitude: 0, detail: '', timestamp: '',
+                      orElse: () => lokasiList.isNotEmpty ? lokasiList.first : Lokasi( // Provide a default non-null Lokasi if list is empty or item not found
+                        idLokasi: '', idSuratTugas: '', namaLokasi: 'Pilih Lokasi', latitude: 0, longitude: 0, detail: '', timestamp: '', // Placeholder name
                       ),
                     ),
                     hint: "Pilih Lokasi",
                     fieldName: 'lokasi',
                     onChanged: (value) {
                       if (value == null) return;
+                      if (!mounted) return;
                       setState(() {
                         selectedLokasiName = value.namaLokasi;
                         selectedLokasiId = value.idLokasi;
@@ -1051,7 +1246,6 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
                     isRequired: true,
                   ),
 
-                  // Target searchable dropdown
                   _isLoadingDropdownData
                       ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1062,27 +1256,28 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
                       SizedBox(height: 16),
                     ],
                   )
-                      : (targetAndTemuanList.isEmpty
+                      : (targetAndTemuanList.isEmpty && !_isLoadingDropdownData
                       ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: const [
                       Text("Target / Sasaran", style: TextStyle(fontWeight: FontWeight.bold)),
                       SizedBox(height: 8),
                       Text(
-                        "Tidak ada data target yang tersedia untuk jenis karantina ini.",
-                        style: TextStyle(color: Colors.red, fontSize: 12),
+                        "Tidak ada data target/sasaran yang tersedia untuk jenis karantina ini atau sedang offline.",
+                        style: TextStyle(color: Colors.orange, fontSize: 12),
                       ),
                       SizedBox(height: 16),
                     ],
                   )
                       : _buildSearchableDropdown<String>(
                     title: "Target / Sasaran",
-                    items: targetAndTemuanList, // Menggunakan data dari API targetUji
+                    items: targetAndTemuanList,
                     itemAsString: (target) => target,
                     selectedItem: selectedTarget,
                     hint: "Pilih Target / Sasaran",
                     fieldName: 'target',
                     onChanged: (value) {
+                      if (!mounted) return;
                       setState(() {
                         selectedTarget = value;
                         if (_formSubmitted) {
@@ -1093,7 +1288,6 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
                     isRequired: true,
                   )),
 
-                  // Metode (text input)
                   const Text("Metode", style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   TextFormField(
@@ -1101,8 +1295,9 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
                     validator: (value) => _customValidator(value, 'metode'),
                     onChanged: (value) {
                       if (_formSubmitted) {
+                        if (!mounted) return;
                         _updateFieldError('metode', value.isEmpty);
-                        _formKey.currentState?.validate();
+                        if (_formKey.currentState != null ) _formKey.currentState?.validate();
                       }
                     },
                     decoration: _getInputDecoration("Masukkan metode").copyWith(
@@ -1115,7 +1310,6 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
                   ),
                   const SizedBox(height: 16),
 
-                  // Temuan searchable dropdown (sekarang juga dari API targetUji)
                   _isLoadingDropdownData
                       ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1126,27 +1320,28 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
                       SizedBox(height: 16),
                     ],
                   )
-                      : (targetAndTemuanList.isEmpty
+                      : (targetAndTemuanList.isEmpty && !_isLoadingDropdownData
                       ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: const [
                       Text("Temuan", style: TextStyle(fontWeight: FontWeight.bold)),
                       SizedBox(height: 8),
                       Text(
-                        "Tidak ada data temuan yang tersedia.",
-                        style: TextStyle(color: Colors.red, fontSize: 12),
+                        "Tidak ada data temuan yang tersedia untuk jenis karantina ini atau sedang offline.",
+                        style: TextStyle(color: Colors.orange, fontSize: 12),
                       ),
                       SizedBox(height: 16),
                     ],
                   )
                       : _buildSearchableDropdown<String>(
                     title: "Temuan",
-                    items: targetAndTemuanList, // Menggunakan data dari API targetUji
+                    items: targetAndTemuanList,
                     itemAsString: (temuan) => temuan,
                     selectedItem: selectedTemuan,
                     hint: "Pilih Temuan",
                     fieldName: 'temuan',
                     onChanged: (value) {
+                      if (!mounted) return;
                       setState(() {
                         selectedTemuan = value;
                         if (_formSubmitted) {
@@ -1157,7 +1352,6 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
                     isRequired: true,
                   )),
 
-                  // Komoditas searchable dropdown
                   _buildSearchableDropdown<Komoditas>(
                     title: "Komoditas",
                     items: komoditasList,
@@ -1165,13 +1359,14 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
                     selectedItem: komoditasList.firstWhere(
                           (element) => element.idKomoditas == selectedKomoditasId,
                       orElse: () => komoditasList.isNotEmpty ? komoditasList.first : Komoditas(
-                        idKomoditas: '', idSuratTugas: '', namaKomoditas: '',
+                        idKomoditas: '', idSuratTugas: '', namaKomoditas: 'Pilih Komoditas',
                       ),
                     ),
                     hint: "Pilih Komoditas",
                     fieldName: 'komoditas',
                     onChanged: (value) {
                       if (value == null) return;
+                      if (!mounted) return;
                       setState(() {
                         selectedKomoditasName = value.namaKomoditas;
                         selectedKomoditasId = value.idKomoditas;
@@ -1201,22 +1396,31 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
-                        children: const [
-                          Text("Dokumentasi", style: TextStyle(fontWeight: FontWeight.bold)),
-                          SizedBox(width: 20),
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text("Dokumentasi", style: TextStyle(fontWeight: FontWeight.bold)),
+                          Text("(${_uploadedPhotos.length}/$_maxPhotos foto)", style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
                         ],
                       ),
+                      const SizedBox(height: 8),
                       SizedBox(
-                        width: 150,
+                        width: 180,
                         height: 48,
                         child: ElevatedButton.icon(
-                          onPressed: () => _showImagePicker(context),
+                          onPressed: (_isPickingImage || !canUploadMore)
+                              ? null
+                              : () => _showImagePicker(context),
                           icon: const Icon(Icons.upload, size: 18),
-                          label: const Text("Upload Foto", style: TextStyle(fontSize: 15)),
+                          label: Text(
+                              canUploadMore ? "Upload Foto" : "Maks. $_maxPhotos Foto",
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 14)
+                          ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF522E2E),
+                            backgroundColor: canUploadMore ? const Color(0xFF522E2E) : Colors.grey,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 5),
+                            textStyle: const TextStyle(overflow: TextOverflow.ellipsis),
                           ),
                         ),
                       ),
@@ -1224,7 +1428,7 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
                         const Padding(
                           padding: EdgeInsets.only(top: 5),
                           child: Text(
-                            "Wajib diisi",
+                            "Wajib upload minimal 1 foto",
                             style: TextStyle(color: Colors.red, fontSize: 12),
                           ),
                         ),
@@ -1232,7 +1436,6 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
                   ),
 
                   const SizedBox(height: 12),
-                  // Photo gallery with delete option
                   if (_uploadedPhotos.isNotEmpty)
                     SizedBox(
                       height: 220,
@@ -1241,13 +1444,13 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
                         controller: PageController(viewportFraction: 0.9),
                         itemBuilder: (context, index) {
                           final bytes = _uploadedPhotos[index];
-
                           return Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 5),
                             child: Stack(
                               children: [
                                 GestureDetector(
                                   onTap: () {
+                                    if (!mounted) return;
                                     showDialog(
                                       context: context,
                                       builder: (_) => Dialog(
@@ -1285,23 +1488,21 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
                                     ),
                                   ),
                                 ),
-
-                                // Delete button
                                 Positioned(
                                   top: 8,
                                   right: 8,
                                   child: Container(
-                                    width: 36,
-                                    height: 36,
+                                    width: 36, height: 36,
                                     decoration: BoxDecoration(
-                                      color: Colors.black54.withValues(alpha: 0.1),
+                                      color: Colors.black.withOpacity(0.4),
                                       shape: BoxShape.circle,
                                     ),
                                     child: IconButton(
-                                      icon: const Icon(Icons.delete, size: 18, color: Colors.red),
+                                      icon: const Icon(Icons.delete, size: 18, color: Colors.white),
                                       padding: EdgeInsets.zero,
                                       constraints: const BoxConstraints(),
                                       onPressed: () {
+                                        if (!mounted) return;
                                         showDialog(
                                           context: context,
                                           builder: (ctx) => AlertDialog(
@@ -1326,15 +1527,13 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
                                     ),
                                   ),
                                 ),
-
-                                // Image counter
                                 Positioned(
                                   bottom: 10,
                                   right: 10,
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                     decoration: BoxDecoration(
-                                      color: Colors.black.withValues(alpha: 0.5),
+                                      color: Colors.black.withOpacity(0.6),
                                       borderRadius: BorderRadius.circular(16),
                                     ),
                                     child: Text(
@@ -1350,7 +1549,7 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
                       ),
                     ),
                   const SizedBox(height: 5),
-                  const Text("Format .JPG, .PNG, .JPEG",
+                  const Text("Format .JPG, .PNG, .JPEG. Maks. $_maxPhotos foto.",
                       style: TextStyle(fontSize: 12, color: Colors.red)),
                   const SizedBox(height: 20),
 
@@ -1369,7 +1568,7 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
                           ),
                         ),
                         child: _isSubmitting
-                            ? const CircularProgressIndicator(color: Colors.white)
+                            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3,))
                             : const Text(
                           "Kirim",
                           style: TextStyle(
@@ -1386,11 +1585,21 @@ class _FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderStat
               ),
             ),
           ),
-          if (_isSubmitting)
+          if (_isSubmitting || _isPickingImage)
             Container(
-              color: Colors.black.withValues(alpha: 0.5),
-              child: const Center(
-                child: CircularProgressIndicator(color: Colors.white),
+              color: Colors.black.withOpacity(0.5),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const CircularProgressIndicator(color: Colors.white),
+                    const SizedBox(height: 10),
+                    Text(
+                      _isSubmitting ? "Mengirim data..." : "Memproses foto...",
+                      style: const TextStyle(color: Colors.white, fontSize: 16, decoration: TextDecoration.none, fontWeight: FontWeight.normal), // Ensure no underline
+                    )
+                  ],
+                ),
               ),
             ),
         ],

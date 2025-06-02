@@ -33,7 +33,7 @@ class HasilPemeriksaan {
     this.syncData = 0,
   });
 
-  // Method untuk konversi ke database (SQLite)
+  // Method untuk konversi ke db
   Map<String, dynamic> toMap() {
     return {
       'id_pemeriksaan': idPemeriksaan,
@@ -53,7 +53,7 @@ class HasilPemeriksaan {
     };
   }
 
-  // Factory untuk membuat object dari database (SQLite)
+  // Factory untuk membuat object dari db
   factory HasilPemeriksaan.fromMap(Map<String, dynamic> map) {
     return HasilPemeriksaan(
       idPemeriksaan: map['id_pemeriksaan'] ?? '',
@@ -73,9 +73,9 @@ class HasilPemeriksaan {
     );
   }
 
-  // Method untuk konversi ke payload API (sesuai dengan service)
+  // Method untuk konversi ke payload API
   Map<String, dynamic> toApiPayload({required String idPetugas}) {
-    // Format tanggal sesuai dengan service
+
     String formattedTglPeriksa = tanggal;
     try {
       DateTime parsedDate;
@@ -86,7 +86,6 @@ class HasilPemeriksaan {
       }
       formattedTglPeriksa = DateFormat("yyyy-MM-ddTHH:mm:ss").format(parsedDate);
     } catch (e) {
-      // Jika gagal parse, gunakan timestamp sekarang
       formattedTglPeriksa = DateFormat("yyyy-MM-ddTHH:mm:ss").format(DateTime.now());
     }
 
@@ -104,7 +103,6 @@ class HasilPemeriksaan {
       'id_petugas': idPetugas.trim(),
     };
 
-    // Tambahkan catatan jika ada dan tidak kosong
     if (catatan != null && catatan!.trim().isNotEmpty) {
       payload['catatan'] = catatan!.trim();
     }

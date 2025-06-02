@@ -32,7 +32,7 @@ class LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text.trim();
 
     if (username.isEmpty || password.isEmpty) {
-      _showSnackbar("Username dan kata sandi tidak boleh kosong!");
+      _showSnackbar("Username atau kata sandi tidak boleh kosong!");
       return;
     }
 
@@ -101,7 +101,7 @@ class LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    "Selamat datang kembali, silakan masuk untuk melanjutkan.",
+                    "Selamat datang kembali, silakan masuk untuk melanjutkan",
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey[700],
@@ -156,7 +156,6 @@ class LoginScreenState extends State<LoginScreen> {
 
                   const SizedBox(height: 10),
 
-                  // Tombol Login
                   SizedBox(
                     width: double.infinity,
                     height: 50,

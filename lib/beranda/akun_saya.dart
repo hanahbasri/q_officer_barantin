@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:q_officer_barantin/main.dart';
 import 'package:q_officer_barantin/services/auth_provider.dart';
 
 class AkunSayaPage extends StatefulWidget {
@@ -142,7 +143,7 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
               color: Colors.brown.withAlpha(26),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: const Color(0xFF522E2E), size: 32),
+            child: Icon(icon, color: MyApp.karantinaBrown, size: 32),
           ),
           const SizedBox(height: 8),
           Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
@@ -208,7 +209,7 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
         top: MediaQuery.of(context).padding.top + 35,
         bottom: 32,
       ),
-      color: const Color(0xFF522E2E),
+      color: MyApp.karantinaBrown,
       child: Column(
         children: [
           Stack(
@@ -229,7 +230,7 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
                   radius: 48,
                   backgroundColor: Colors.white,
                   child: Icon(Icons.person,
-                      size: 52, color: Color(0xFF522E2E)),
+                      size: 52, color: MyApp.karantinaBrown),
                 ),
               ),
               GestureDetector(
@@ -248,7 +249,7 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
                     ],
                   ),
                   child: const Icon(Icons.camera_alt,
-                      color: Color(0xFF522E2E), size: 20),
+                      color: MyApp.karantinaBrown, size: 20),
                 ),
               ),
             ],
@@ -306,7 +307,7 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor:
-        _showAppBar ? const Color(0xFF522E2E) : Colors.transparent,
+        _showAppBar ? MyApp.karantinaBrown : Colors.transparent,
         elevation: _showAppBar ? 4 : 0,
         iconTheme: const IconThemeData(color: Colors.white),
         title: _showAppBar

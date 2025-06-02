@@ -49,7 +49,6 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
       _checkTutorialStatus();
     }
 
-    // Inisialisasi tutorial setelah build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initTutorial();
       Future.delayed(const Duration(milliseconds: 600), () {
@@ -68,7 +67,6 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
   }
 
   Future<void> _saveTutorialStatus() async {
-    // Hanya simpan jika bukan mode tutorial
     if (!widget.showTutorialImmediately) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('seen_st_tertunda_tutorial', true);
@@ -306,7 +304,6 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
         foregroundColor: Colors.white,
         centerTitle: true,
         actions: widget.showTutorialImmediately ? [] : [
-          // Tombol tutorial di AppBar (hanya untuk mode normal)
           IconButton(
             icon: const Icon(Icons.help_outline),
             onPressed: () {
@@ -322,7 +319,6 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header Card dengan Judul Surat Tugas (diubah menjadi dropdown)
               Card(
                 key: headerCardKey,
                 margin: const EdgeInsets.only(bottom: 16),
@@ -331,7 +327,7 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                clipBehavior: Clip.antiAlias, // Ditambahkan untuk memastikan child menghormati border radius
+                clipBehavior: Clip.antiAlias,
                 child: InkWell(
                   onTap: () {
                     setState(() {
@@ -381,7 +377,6 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                         ),
                       ),
 
-                      // Konten yang diperluas untuk kartu header
                       if (_isHeaderExpanded) ...[
                         Container(
                           width: double.infinity,
@@ -467,7 +462,6 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                 ),
               ),
 
-              // 1. Kartu untuk Petugas - Dengan scrollbar vertikal
               Card(
                 key: petugasCardKey,
                 color: Colors.white,

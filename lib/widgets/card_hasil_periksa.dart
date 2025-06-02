@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:q_officer_barantin/main.dart';
 import '../databases/db_helper.dart';
 import 'package:q_officer_barantin/additional/tanggal.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
@@ -13,6 +14,8 @@ class HasilPeriksaCard extends StatefulWidget {
   final bool enableAutoSlide;
   final VoidCallback? onTap;
   final Future<void> Function()? onSyncPressed;
+  final Key? syncButtonKey;
+
 
   const HasilPeriksaCard({
     super.key,
@@ -22,6 +25,7 @@ class HasilPeriksaCard extends StatefulWidget {
     this.enableAutoSlide = false,
     this.onTap,
     this.onSyncPressed,
+    this.syncButtonKey,
   });
 
   @override
@@ -34,7 +38,6 @@ class _HasilPeriksaCardState extends State<HasilPeriksaCard> {
   int _currentPhotoIndex = 0;
   Timer? _autoScrollTimer;
 
-  // Cache foto data
   List<Map<String, dynamic>>? _cachedFotoList;
   bool _isLoadingFoto = true;
 
@@ -47,6 +50,7 @@ class _HasilPeriksaCardState extends State<HasilPeriksaCard> {
 
   Future<void> _loadFotoData() async {
     try {
+      if (!mounted) return;
       setState(() {
         _isLoadingFoto = true;
       });
@@ -58,12 +62,11 @@ class _HasilPeriksaCardState extends State<HasilPeriksaCard> {
           _cachedFotoList = fotoList;
           _isLoadingFoto = false;
         });
-
-        // Start auto scroll after data is loaded
         if (widget.enableAutoSlide && fotoList.length > 1) {
           _startAutoScroll();
         }
       }
+
     } catch (e) {
       if (kDebugMode) {
         print("Error loading foto data: $e");
@@ -77,13 +80,9 @@ class _HasilPeriksaCardState extends State<HasilPeriksaCard> {
   }
 
   void _startAutoScroll() {
-    // Cancel any existing timer first
     _autoScrollTimer?.cancel();
-
-    // Wait a bit before starting
     Future.delayed(const Duration(seconds: 1), () {
       if (mounted && _cachedFotoList != null && _cachedFotoList!.length > 1) {
-        // Create a new timer with a fixed interval
         _autoScrollTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
           if (mounted && _cachedFotoList != null) {
             _scrollToNextPhoto();
@@ -101,10 +100,8 @@ class _HasilPeriksaCardState extends State<HasilPeriksaCard> {
     final photoCount = _cachedFotoList!.length;
     if (photoCount <= 1) return;
 
-    // Calculate the next index
     final nextIndex = (_currentPhotoIndex + 1) % photoCount;
 
-    // Ensure controller is still attached before animating
     if (_localPageController.hasClients && mounted) {
       try {
         _localPageController.animateToPage(
@@ -168,9 +165,11 @@ class _HasilPeriksaCardState extends State<HasilPeriksaCard> {
             controller: _localPageController,
             itemCount: fotoList.length,
             onPageChanged: (index) {
-              setState(() {
-                _currentPhotoIndex = index;
-              });
+              if (mounted) {
+                setState(() {
+                  _currentPhotoIndex = index;
+                });
+              }
             },
             itemBuilder: (context, index) {
               final bytes = base64Decode(fotoList[index]['foto'] as String);
@@ -181,7 +180,7 @@ class _HasilPeriksaCardState extends State<HasilPeriksaCard> {
                   child: Image.memory(
                     bytes,
                     fit: BoxFit.cover,
-                    gaplessPlayback: true, // Prevent flickering
+                    gaplessPlayback: true,
                     errorBuilder: (context, error, stackTrace) {
                       return Container(
                         color: Colors.grey[200],
@@ -212,9 +211,16 @@ class _HasilPeriksaCardState extends State<HasilPeriksaCard> {
     );
   }
 
+
+
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
+    final bool isSynced = item['syncdata'] == 1; // Cek status sinkronisasi
+
+    final Color syncButtonBorderColor = isSynced ? Colors.green.shade700 : const Color(0xFF522E2E);
+    final Color syncIconColor = isSynced ? Colors.green.shade700 : const Color(0xFF522E2E);
+    final Color syncTextColor = isSynced ? Colors.green.shade700 : const Color(0xFF522E2E);
 
     return GestureDetector(
       onTap: widget.canTap ? widget.onTap : null,
@@ -228,7 +234,7 @@ class _HasilPeriksaCardState extends State<HasilPeriksaCard> {
             // HEADER
             Container(
               decoration: BoxDecoration(
-                color: Color(0xFF522E2E),
+                color: MyApp.karantinaBrown,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -347,46 +353,48 @@ class _HasilPeriksaCardState extends State<HasilPeriksaCard> {
                     ],
                   ),
 
-                  // SYNC BUTTON (if enabled)
-                  if (widget.showSync) const Divider(height: 12),
-
-                  if (widget.showSync)
+                  // BAGIAN TOMBOL SINKRONISASI
+                  if (widget.showSync) ...[
+                    const Divider(height: 24, thickness: 0.5), // Garis pemisah
                     Align(
-                      alignment: Alignment.bottomRight,
+                      alignment: Alignment.bottomRight, // Posisikan tombol di kanan bawah
                       child: OutlinedButton.icon(
-                        onPressed: item['syncdata'] == 1 || _isSyncing
-                            ? null
+                        key: widget.syncButtonKey, // Terapkan kunci untuk tutorial
+                        onPressed: isSynced || _isSyncing
+                            ? null // Nonaktifkan tombol jika sudah sinkron atau sedang proses
                             : () async {
-                          setState(() => _isSyncing = true);
+                          if (mounted) setState(() => _isSyncing = true);
                           if (widget.onSyncPressed != null) await widget.onSyncPressed!();
-                          setState(() => _isSyncing = false);
+                          if (mounted) setState(() => _isSyncing = false);
                         },
                         icon: _isSyncing
-                            ? const SizedBox(
+                            ? SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF522E2E)),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: syncButtonBorderColor),
                         )
                             : Icon(
-                          item['syncdata'] == 1 ? Icons.check_circle : Icons.sync,
-                          color: Color(0xFF522E2E),
+                          isSynced ? Icons.check_circle : Icons.sync,
+                          color: syncIconColor,
+                          size: 18,
                         ),
                         label: Text(
                           _isSyncing
                               ? 'Menyinkron...'
-                              : item['syncdata'] == 1
+                              : isSynced
                               ? 'Telah Sinkron'
                               : 'Sinkron Sekarang',
-                          style: const TextStyle(color: Color(0xFF522E2E), fontSize: 13),
+                          style: TextStyle(color: syncTextColor, fontSize: 13, fontWeight: FontWeight.w500),
                         ),
                         style: OutlinedButton.styleFrom(
                           backgroundColor: Colors.white,
-                          side: const BorderSide(color: Color(0xFF522E2E)),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          side: BorderSide(color: syncButtonBorderColor),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), // Bentuk tombol
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), // Padding tombol
                         ),
                       ),
                     ),
+                  ]
                 ],
               ),
             ),

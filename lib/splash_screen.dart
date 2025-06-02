@@ -69,7 +69,6 @@ class SplashScreenState extends State<SplashScreen> {
     return Stack(
       alignment: Alignment.center,
       children: [
-        // Logo utama
         Image.asset(
           'images/logo_barantin.png',
           width: 216,
@@ -91,7 +90,6 @@ class SplashScreenState extends State<SplashScreen> {
           },
         ),
 
-        // Efek shimmer
         Shimmer.fromColors(
           baseColor: Colors.transparent,
           highlightColor: Colors.white.withOpacity(0.3),
@@ -116,7 +114,6 @@ class SplashScreenState extends State<SplashScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Background gradasi
           Container(
             width: double.infinity,
             height: double.infinity,
@@ -129,7 +126,6 @@ class SplashScreenState extends State<SplashScreen> {
             ),
           ),
 
-          // Logo & judul
           Align(
             alignment: Alignment.center,
             child: Column(
@@ -157,7 +153,6 @@ class SplashScreenState extends State<SplashScreen> {
             ),
           ),
 
-          // Powered by Best Trust
           Positioned(
             bottom: bottomSpacing,
             left: 0,
