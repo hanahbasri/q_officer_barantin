@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
@@ -8,7 +7,6 @@ import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import 'package:q_officer_barantin/models/hasil_pemeriksaan.dart';
 import 'package:q_officer_barantin/services/surat_tugas_service.dart';
-import 'package:http/http.dart' as http;
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
@@ -28,11 +26,14 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: (db, version) async {
         await _createTables(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
+        if (kDebugMode) {
+          print('Upgrading database from $oldVersion to $newVersion');
+        }
         if (oldVersion < 2) {
           await db.execute('DROP TABLE IF EXISTS Dokumentasi_Periksa');
           await db.execute('DROP TABLE IF EXISTS Hasil_Pemeriksaan');
@@ -43,7 +44,10 @@ class DatabaseHelper {
           await _createTables(db);
         }
         if (oldVersion < 3) {
-          // Upgrade untuk versi 3 jika diperlukan
+        }
+        if (oldVersion < 4) {
+          // Migrasi ke versi 4: Tambahkan tabel Master_Target_Temuan
+          await _createMasterTargetTemuanTable(db);
         }
       },
     );
@@ -138,7 +142,86 @@ class DatabaseHelper {
         FOREIGN KEY (id_pemeriksaan) REFERENCES Hasil_Pemeriksaan(id_pemeriksaan)
       );
     ''');
+
+    await _createMasterTargetTemuanTable(db);
   }
+
+    // Fungsi terpisah untuk membuat tabel Master_Target_Temuan
+    Future<void> _createMasterTargetTemuanTable(Database db) async {
+      await db.execute('''
+      CREATE TABLE Master_Target_Temuan (
+        jenis_karantina TEXT NOT NULL PRIMARY KEY,
+        uraian_list_json TEXT NOT NULL,
+        last_sync_timestamp TEXT NOT NULL
+      )
+    ''');
+      if (kDebugMode) {
+        print('✅ Table Master_Target_Temuan created/ensured.');
+      }
+    }
+
+    // Fungsi untuk menyimpan atau memperbarui data master target/temuan
+    Future<void> insertOrUpdateMasterTargetTemuan(String jenisKarantina, List<String> uraianList) async {
+      final db = await database;
+      try {
+        await db.insert(
+          'Master_Target_Temuan',
+          {
+            'jenis_karantina': jenisKarantina,
+            'uraian_list_json': jsonEncode(uraianList),
+            'last_sync_timestamp': DateTime.now().toIso8601String(),
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace, // Ganti jika sudah ada
+        );
+        if (kDebugMode) {
+          print('💾 Master Target/Temuan untuk "$jenisKarantina" disimpan/diperbarui.');
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('❌ Error insert/update Master_Target_Temuan: $e');
+        }
+        rethrow;
+      }
+    }
+
+    // Fungsi untuk mengambil data master target/temuan dari DB lokal
+    Future<List<String>> getLocalMasterTargetTemuan(String jenisKarantina) async {
+      final db = await database;
+      try {
+        final List<Map<String, dynamic>> maps = await db.query(
+          'Master_Target_Temuan',
+          where: 'jenis_karantina = ?',
+          whereArgs: [jenisKarantina],
+        );
+
+        if (maps.isNotEmpty) {
+          final String uraianListJson = maps.first['uraian_list_json'] as String;
+          if (uraianListJson.isNotEmpty) {
+            final List<dynamic> decodedList = jsonDecode(uraianListJson);
+            final List<String> stringList = decodedList.map((item) => item.toString()).toList();
+            if (kDebugMode) {
+              print('📦 Master Target/Temuan lokal ditemukan untuk "$jenisKarantina": ${stringList.length} item.');
+            }
+            return stringList;
+          } else {
+            if (kDebugMode) {
+              print('⚠️ Uraian list JSON kosong untuk "$jenisKarantina".');
+            }
+            return [];
+          }
+        } else {
+          if (kDebugMode) {
+            print('ℹ️ Tidak ada Master Target/Temuan lokal untuk "$jenisKarantina".');
+          }
+          return [];
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('❌ Error getLocalMasterTargetTemuan: $e');
+        }
+        return [];
+      }
+    }
 
   Future<void> syncSuratTugasFromApi(String nip) async {
     try {
@@ -161,7 +244,7 @@ class DatabaseHelper {
 
       for (var suratTugas in suratTugasList) {
         if (kDebugMode) {
-          print('💾 Processing surat tugas: ${suratTugas.idSuratTugas}');
+          print('💾 Proses surat tugas: ${suratTugas.idSuratTugas}');
         }
 
         // Simpan surat tugas
@@ -223,7 +306,7 @@ class DatabaseHelper {
       }
 
       if (kDebugMode) {
-        print('✅ Sync completed successfully');
+        print('✅ Sync sukses');
       }
     } catch (e) {
       debugPrint('❌ Error sync data dari API: $e');
@@ -341,7 +424,6 @@ class DatabaseHelper {
     );
   }
 
-  // UPDATED: Menggunakan model HasilPemeriksaan yang baru
   Future<void> insertHasilPemeriksaan(HasilPemeriksaan hasil) async {
     final db = await database;
     try {
@@ -357,7 +439,6 @@ class DatabaseHelper {
     }
   }
 
-  // UPDATED: Mengembalikan List<HasilPemeriksaan> instead of raw Map
   Future<List<HasilPemeriksaan>> getHasilPemeriksaanById(String idSuratTugas) async {
     final db = await database;
     try {
@@ -378,7 +459,6 @@ class DatabaseHelper {
     }
   }
 
-  // DEPRECATED: Use getHasilPemeriksaanById instead
   @Deprecated('Use getHasilPemeriksaanById instead')
   Future<List<Map<String, dynamic>>> getPeriksaById(String idSuratTugas) async {
     final db = await database;
@@ -396,7 +476,7 @@ class DatabaseHelper {
       'id_foto': const Uuid().v4(),
       'id_pemeriksaan': idPemeriksaan,
       'foto': base64Image,
-    });
+    }, conflictAlgorithm: ConflictAlgorithm.replace );
   }
 
   Future<List<Map<String, dynamic>>> getImageFromDatabase(String idPemeriksaan) async {
@@ -486,14 +566,12 @@ class DatabaseHelper {
     );
   }
 
-  // UPDATED: Menggunakan SuratTugasService.submitHasilPemeriksaan yang sudah direvisi
   Future<bool> sendHasilPemeriksaanToServer(HasilPemeriksaan hasil, List<Uint8List> photos, String userNip) async {
     try {
       if (kDebugMode) {
         print('🔄 DatabaseHelper: Mengirim hasil pemeriksaan menggunakan SuratTugasService...');
       }
 
-      // Gunakan service yang sudah direvisi
       bool success = await SuratTugasService.submitHasilPemeriksaan(hasil, photos, userNip);
 
       if (kDebugMode) {
@@ -513,7 +591,6 @@ class DatabaseHelper {
     }
   }
 
-  // UPDATED: Menggunakan HasilPemeriksaan model dan service yang baru
   Future<void> syncSingleData(String id, String userNip) async {
     try {
       // Validasi input
@@ -528,10 +605,8 @@ class DatabaseHelper {
       final data = await db.query('Hasil_Pemeriksaan', where: 'id_pemeriksaan = ?', whereArgs: [id]);
 
       if (data.isNotEmpty) {
-        // Convert ke HasilPemeriksaan model
         final hasilPemeriksaan = HasilPemeriksaan.fromMap(data.first);
 
-        // Load foto sebagai Uint8List
         final photos = await loadImagesFromDb(id);
 
         if (kDebugMode) {
@@ -540,7 +615,6 @@ class DatabaseHelper {
           print('📷 Photos Count: ${photos.length}');
         }
 
-        // Kirim ke server menggunakan service yang sudah direvisi
         bool success = await sendHasilPemeriksaanToServer(hasilPemeriksaan, photos, userNip);
 
         if (success) {
@@ -564,7 +638,6 @@ class DatabaseHelper {
 
   Future<void> syncUnsentData(String userNip) async {
     try {
-      // Validasi NIP
       if (userNip.isEmpty) {
         if (kDebugMode) {
           print('❌ userNip kosong, tidak dapat sync data yang belum terkirim');
@@ -592,7 +665,6 @@ class DatabaseHelper {
     }
   }
 
-  // UPDATED: Method untuk mendapatkan data yang belum tersync
   Future<List<HasilPemeriksaan>> getUnsyncedData() async {
     try {
       final db = await database;
@@ -613,7 +685,6 @@ class DatabaseHelper {
     }
   }
 
-  // UPDATED: Method untuk update status sync
   Future<void> updateSyncStatus(String idPemeriksaan, int syncStatus) async {
     try {
       final db = await database;

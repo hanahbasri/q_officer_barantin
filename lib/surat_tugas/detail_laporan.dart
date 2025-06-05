@@ -1,17 +1,21 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:q_officer_barantin/main.dart';
 import 'st_selesai.dart';
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../databases/db_helper.dart';
 import 'form_periksa.dart';
+import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'package:q_officer_barantin/models/st_lengkap.dart';
 import 'package:q_officer_barantin/widgets/card_hasil_periksa.dart';
 import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:provider/provider.dart'; // Import provider
-import '../services/auth_provider.dart'; // Import AuthProvider
+import 'package:q_officer_barantin/services/history_service.dart';
+import 'package:provider/provider.dart';
+import '../services/auth_provider.dart';
+import '../dialog/selesai_tugas_dialog.dart';
 
 class DetailLaporan extends StatefulWidget {
   final StLengkap suratTugas;
@@ -48,105 +52,339 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
   late TutorialCoachMark tutorialCoachMark;
   final GlobalKey suratTugasKey = GlobalKey();
 
+  // CardHasilPeriksa dan tombol sinkronisasi
+  final GlobalKey cardHasilPeriksaKey = GlobalKey();
+  final GlobalKey tombolSinkronKey = GlobalKey();
+
+  // GlobalKey untuk tombol "Buat Laporan Pemeriksaan" dan "Selesai Tugas"
+  final GlobalKey buatLaporanButtonKey = GlobalKey();
+  final GlobalKey selesaiTugasButtonKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
     _monitorConnection();
-    _checkTutorialStatus();
-    _loadHasilPemeriksaan(); // Memuat hasil pemeriksaan saat initState
+    _initializePageAndTutorial();
+  }
 
-    // Initialize tutorial after build
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initTutorial();
-      Future.delayed(const Duration(milliseconds: 600), () {
+    Future<void> _initializePageAndTutorial() async {
+      await _checkTutorialStatus();
+      await _loadHasilPemeriksaan();
+
+      if (mounted) {
+        if (_hasilList.isNotEmpty) {
+          _initTutorial();
+        } else {
+          _initTutorialWithoutHasilPeriksa();
+        }
+
         if (!_hasSeenTutorial) {
           _showTutorial();
         }
+      }
+    }
+
+    Future<void> _checkTutorialStatus() async {
+      final prefs = await SharedPreferences.getInstance();
+      if (mounted) { // Periksa mounted setelah async gap
+        setState(() {
+          _hasSeenTutorial = prefs.getBool('seen_detail_laporan_tutorial_v2') ?? false;
+        });
+      }
+    }
+
+    Future<void> _saveTutorialStatus() async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('seen_detail_laporan_tutorial_v2', true);
+    }
+
+    void _initTutorial() {
+      tutorialCoachMark = TutorialCoachMark(
+        targets: _createTargets(),
+        colorShadow: const Color(0xFF522E2E),
+        textSkip: "LEWATI",
+        textStyleSkip: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        paddingFocus: 10,
+        opacityShadow: 0.8,
+        onFinish: () {
+          debugPrint("Tutorial selesai");
+          _saveTutorialStatus();
+        },
+        onSkip: () {
+          _saveTutorialStatus();
+          return true;
+        },
+      );
+    }
+
+    void _initTutorialWithoutHasilPeriksa() {
+      tutorialCoachMark = TutorialCoachMark(
+        targets: _createTargets(hasHasilPeriksa: false),
+        colorShadow: const Color(0xFF522E2E),
+        textSkip: "LEWATI",
+        textStyleSkip: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        paddingFocus: 10,
+        opacityShadow: 0.8,
+        onFinish: () {
+          debugPrint("Tutorial selesai");
+          _saveTutorialStatus();
+        },
+        onSkip: () {
+          _saveTutorialStatus();
+          return true;
+        },
+      );
+    }
+
+    void _showTutorial() {
+    if (mounted && tutorialCoachMark.targets.isNotEmpty) {
+      // Periksa apakah widget masih terpasang sebelum menampilkan tutorial
+      Future.delayed(Duration.zero, () {
+        if (mounted) {
+          tutorialCoachMark.show(context: context);
+        }
       });
-    });
+    } else if (mounted && tutorialCoachMark.targets.isEmpty) {
+      debugPrint("Tidak ada target tutorial untuk ditampilkan.");
+      _saveTutorialStatus(); // Simpan status jika tidak ada target, agar tidak muncul lagi
+    }
   }
 
-  Future<void> _checkTutorialStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _hasSeenTutorial = prefs.getBool('seen_detail_laporan_tutorial') ?? false;
-    });
-  }
-
-  Future<void> _saveTutorialStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('seen_detail_laporan_tutorial', true);
-  }
-
-  void _initTutorial() {
-    tutorialCoachMark = TutorialCoachMark(
-      targets: _createTargets(),
-      colorShadow: const Color(0xFF522E2E),
-      textSkip: "LEWATI",
-      textStyleSkip: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-      paddingFocus: 10,
-      opacityShadow: 0.8,
-      onFinish: () {
-        debugPrint("Tutorial selesai");
-        _saveTutorialStatus();
-      },
-      onSkip: () {
-        _saveTutorialStatus();
-        return true;
-      },
-    );
-  }
-
-  void _showTutorial() {
-    tutorialCoachMark.show(context: context);
-  }
-
-  List<TargetFocus> _createTargets() {
+  List<TargetFocus> _createTargets({bool hasHasilPeriksa = true}) {
     List<TargetFocus> targets = [];
 
-    targets.add(
-      TargetFocus(
-        identify: "suratTugasKey",
-        keyTarget: suratTugasKey,
-        alignSkip: Alignment.bottomRight,
-        paddingFocus: 20.0, // Increased padding to focus on entire area
-        shape: ShapeLightFocus.RRect,
-        radius: 8,
-        contents: [
-          TargetContent(
-            align: ContentAlign.bottom,
-            builder: (context, controller) {
-              return Container(
-                padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      "Detail Surat Tugas 📃", // Changed emoji
-                      style: TextStyle(
-                        color: Color(0xFF522E2E),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
+    // Target untuk Detail Surat Tugas
+    if (suratTugasKey.currentContext != null) {
+      targets.add(
+        TargetFocus(
+          identify: "suratTugasKey",
+          keyTarget: suratTugasKey,
+          alignSkip: Alignment.bottomRight, // Konsisten
+          paddingFocus: 20.0,
+          shape: ShapeLightFocus.RRect,
+          radius: 8,
+          contents: [
+            TargetContent(
+              align: ContentAlign.bottom,
+              builder: (context, controller) {
+                return Container(
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        "Detail Surat Tugas 📃",
+                        style: TextStyle(
+                          color: Color(0xFF522E2E),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      "Tekan untuk melihat detail lengkap surat tugas. Di dalamnya terdapat informasi dasar, petugas, lokasi dan komoditas yang diperiksa.",
-                      style: TextStyle(fontSize: 14),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
+                      SizedBox(height: 10),
+                      Text(
+                        "Tekan untuk melihat detail lengkap surat tugas. Di dalamnya terdapat informasi dasar, petugas, lokasi dan komoditas yang diperiksa.",
+                        style: TextStyle(fontSize: 14),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Target untuk Card Hasil Periksa (hanya jika ada hasil periksa dan widget.showDetailHasil true)
+    if (hasHasilPeriksa && widget.showDetailHasil && cardHasilPeriksaKey.currentContext != null) {
+      targets.add(
+        TargetFocus(
+          identify: "cardHasilPeriksaKey",
+          keyTarget: cardHasilPeriksaKey,
+          alignSkip: Alignment.bottomRight, // Konsisten
+          paddingFocus: 10.0,
+          shape: ShapeLightFocus.RRect,
+          radius: 16,
+          contents: [
+            TargetContent(
+              align: ContentAlign.top,
+              builder: (context, controller) {
+                return Container(
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        "Hasil Pemeriksaan 📄",
+                        style: TextStyle(
+                          color: Color(0xFF522E2E),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      Text(
+                        "Ini adalah card hasil pemeriksaan. Tekan untuk melihat detail laporan pemeriksaan yang telah dibuat. Anda juga dapat melihat status sinkronisasi data di sini.",
+                        style: TextStyle(fontSize: 14),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Target untuk Tombol Sinkronisasi (hanya jika ada hasil periksa dan !widget.isViewOnly)
+    if (hasHasilPeriksa && !widget.isViewOnly && tombolSinkronKey.currentContext != null) {
+      targets.add(
+        TargetFocus(
+          identify: "tombolSinkronKey",
+          keyTarget: tombolSinkronKey,
+          alignSkip: Alignment.bottomRight, // PERBAIKAN: Diubah dari topRight
+          paddingFocus: 5.0,
+          shape: ShapeLightFocus.RRect,
+          radius: 5,
+          contents: [
+            TargetContent(
+              align: ContentAlign.top,
+              builder: (context, controller) {
+                return Container(
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        "Sinkronisasi Data 🔄",
+                        style: TextStyle(
+                          color: Color(0xFF522E2E),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      Text(
+                        "Tombol ini menunjukkan status sinkronisasi laporan. Jika 'Sinkron Sekarang', tekan untuk mengirim data ke server. Jika 'Telah Sinkron', data sudah aman di server.",
+                        style: TextStyle(fontSize: 14),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Target untuk tombol "Buat Laporan Pemeriksaan" (hanya jika !widget.isViewOnly)
+    if (!widget.isViewOnly && buatLaporanButtonKey.currentContext != null) {
+      targets.add(
+        TargetFocus(
+          identify: "buatLaporanButtonKey",
+          keyTarget: buatLaporanButtonKey,
+          alignSkip: Alignment.bottomRight,
+          shape: ShapeLightFocus.RRect,
+          radius: 8,
+          contents: [
+            TargetContent(
+              align: ContentAlign.top,
+              builder: (context, controller) {
+                return Container(
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        "Buat Laporan Baru 📝",
+                        style: TextStyle(
+                          color: Color(0xFF522E2E),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      Text(
+                        "Tekan tombol ini untuk membuat laporan pemeriksaan baru terkait surat tugas ini.",
+                        style: TextStyle(fontSize: 14),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Target untuk tombol "Selesai Tugas" (hanya jika !widget.isViewOnly)
+    if (!widget.isViewOnly && selesaiTugasButtonKey.currentContext != null) {
+      targets.add(
+        TargetFocus(
+          identify: "selesaiTugasButtonKey",
+          keyTarget: selesaiTugasButtonKey,
+          alignSkip: Alignment.bottomRight, // PERBAIKAN: Diubah dari topCenter
+          shape: ShapeLightFocus.RRect,
+          radius: 8,
+          contents: [
+            TargetContent(
+              align: ContentAlign.top,
+              builder: (context, controller) {
+                return Container(
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        "Selesaikan Tugas ✅",
+                        style: TextStyle(
+                          color: Color(0xFF522E2E),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      Text(
+                        "Jika semua laporan pemeriksaan telah dibuat dan disinkronkan, tekan tombol ini untuk menandai surat tugas sebagai selesai.",
+                        style: TextStyle(fontSize: 14),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      );
+    }
 
     return targets;
   }
@@ -156,27 +394,35 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
       bool nowOffline = result == ConnectivityResult.none;
 
       if (_isOffline && !nowOffline) {
-        setState(() {
-          _isOffline = false;
-          _showConnectionMessage = true;
-        });
+        if (mounted) {
+          setState(() {
+            _isOffline = false;
+            _showConnectionMessage = true;
+          });
+        }
 
         final ping = await getPingLatency();
         if (ping < 100) {
           final db = DatabaseHelper();
-          final authProvider = Provider.of<AuthProvider>(context, listen: false);
-          final userNip = authProvider.userNip; // ✅ GANTI: userId -> userNip
-          if (userNip != null) {
-            await db.syncUnsentData(userNip);
+          if (mounted) {
+            final authProvider = Provider.of<AuthProvider>(context, listen: false);
+            final userNip = authProvider.userNip;
+            if (userNip != null) {
+              await db.syncUnsentData(userNip);
+              if (mounted) {
+                _loadHasilPemeriksaan();
+              }
+            }
           }
         }
-
         _hideNotificationAfterDelay();
       } else if (!_isOffline && nowOffline) {
-        setState(() {
-          _isOffline = true;
-          _showConnectionMessage = true;
-        });
+        if (mounted) {
+          setState(() {
+            _isOffline = true;
+            _showConnectionMessage = true;
+          });
+        }
         _hideNotificationAfterDelay();
       }
     });
@@ -194,9 +440,6 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
     }
   }
 
-  // Removed getSuratTugasLengkap as it's redundant.
-  // The widget.suratTugas already contains the StLengkap object.
-
   Future<int> getPingLatency() async {
     try {
       final stopwatch = Stopwatch()..start();
@@ -210,21 +453,26 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
 
   void _hideNotificationAfterDelay() {
     Future.delayed(const Duration(seconds: 3), () {
-      setState(() {
-        _showConnectionMessage = false;
-      });
+      if (mounted) {
+        setState(() {
+          _showConnectionMessage = false;
+        });
+      }
     });
   }
 
   @override
   void dispose() {
     _subscription.cancel();
+    if (tutorialCoachMark.isShowing) {
+      tutorialCoachMark.finish();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Directly use widget.suratTugas as it's already available
+
     final suratTugasData = widget.suratTugas;
 
     return Scaffold(
@@ -236,6 +484,24 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
         backgroundColor: const Color(0xFF522E2E),
         foregroundColor: Colors.white,
         centerTitle: true,
+        actions: [
+          // Tombol untuk menampilkan tutorial lagi jika sudah pernah dilihat
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            onPressed: () {
+              // Reset status tutorial agar bisa ditampilkan lagi
+              SharedPreferences.getInstance().then((prefs) => prefs.remove('seen_detail_laporan_tutorial_v2'));
+              setState(() => _hasSeenTutorial = false);
+              if (_hasilList.isNotEmpty) {
+                _initTutorial();
+              } else {
+                _initTutorialWithoutHasilPeriksa();
+              }
+              _showTutorial();
+            },
+            tooltip: "Tampilkan Tutorial",
+          ),
+        ],
       ),
       body: widget.idSuratTugas == null
           ? const Center(child: Text('ID Surat Tugas tidak tersedia'))
@@ -254,7 +520,6 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 18.0, vertical: 6.0),
                       child: Container(
-                        // Add shadow with BoxDecoration
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
                           boxShadow: [
@@ -262,7 +527,7 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
                               color: Colors.black.withOpacity(0.1),
                               spreadRadius: 1,
                               blurRadius: 4,
-                              offset: const Offset(0, 4), // Shadow position
+                              offset: const Offset(0, 4),
                             ),
                           ],
                         ),
@@ -313,7 +578,7 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Padding(
-                                padding: const EdgeInsets.all(16.0),
+                                padding: const EdgeInsets.all(20.0),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
@@ -336,43 +601,57 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
                       ),
                     ),
                     const SizedBox(height: 1),
-                    // Menggunakan Consumer untuk mendapatkan AuthProvider
+
                     Consumer<AuthProvider>(
                       builder: (context, authProvider, child) {
                         final userNip = authProvider.userNip;
-                        return Column(
-                          children: _hasilList.map((item) {
-                            return HasilPeriksaCard(
+                        // Bangun daftar widget CardHasilPeriksa
+                        // Kita hanya perlu satu cardHasilPeriksaKey untuk tutorial,
+                        // jadi kita akan menerapkannya pada card pertama jika ada.
+                        List<Widget> hasilPeriksaWidgets = [];
+                        for (int i = 0; i < _hasilList.length; i++) {
+                          final item = _hasilList[i];
+                          hasilPeriksaWidgets.add(
+                            HasilPeriksaCard(
+                              // Terapkan GlobalKey ke card pertama untuk tutorial
+                              key: (i == 0 && widget.showDetailHasil) ? cardHasilPeriksaKey : null,
                               item: item,
                               canTap: widget.showDetailHasil,
                               showSync: !widget.isViewOnly,
-                              enableAutoSlide: true, // Enable auto slide for images
+                              enableAutoSlide: true,
+                              // Terapkan GlobalKey ke tombol sinkronisasi di card pertama untuk tutorial
+                              syncButtonKey: (i == 0 && !widget.isViewOnly) ? tombolSinkronKey : null,
                               onTap: widget.showDetailHasil
                                   ? () async {
                                 final fotoList = await DatabaseHelper().getImageBase64List(item['id_pemeriksaan']);
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => SuratTugasSelesai(
-                                      hasilPemeriksaan: {
-                                        ...item,
-                                        'fotoBase64List': fotoList,
-                                      },
+                                if (mounted) { // Pastikan widget masih terpasang
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => SuratTugasSelesai(
+                                        hasilPemeriksaan: {
+                                          ...item,
+                                          'fotoBase64List': fotoList,
+                                        },
+                                      ),
                                     ),
-                                  ),
-                                );
+                                  );
+                                }
                               }
                                   : null,
                               onSyncPressed: widget.isViewOnly || userNip == null
                                   ? null
                                   : () async {
                                 final db = DatabaseHelper();
-                                await db.syncSingleData(item['id_pemeriksaan'], userNip); // Teruskan userNip
-                                // Setelah sync, muat ulang hasil pemeriksaan untuk memperbarui UI
+                                await db.syncSingleData(item['id_pemeriksaan'], userNip);
                                 await _loadHasilPemeriksaan();
                               },
-                            );
-                          }).toList(),
+                            ),
+                          );
+                        }
+
+                        return Column(
+                          children: hasilPeriksaWidgets,
                         );
                       },
                     ),
@@ -384,6 +663,8 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
                         idSuratTugas: widget.idSuratTugas,
                         suratTugas: widget.suratTugas,
                         onSelesaiTugas: widget.onSelesaiTugas,
+                        buatLaporanKey: buatLaporanButtonKey,
+                        selesaiTugasKey: selesaiTugasButtonKey,
                       ),
                   ],
                 ),
@@ -408,7 +689,7 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
             child: Text(
               label,
               style: const TextStyle(
-                color: Color(0xFF522E2E),
+                color: MyApp.karantinaBrown,
                 fontSize: 13,
                 fontWeight: FontWeight.bold,
               ),
@@ -417,7 +698,7 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
           const Text(
             " : ",
             style: TextStyle(
-              color: Color(0xFF522E2E),
+              color: MyApp.karantinaBrown,
               fontSize: 13,
               fontWeight: FontWeight.bold,
             ),
@@ -427,7 +708,7 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
             child: Text(
               value?.toString() ?? '-',
               style: const TextStyle(
-                color: Color(0xFF522E2E),
+                color: MyApp.karantinaBrown,
                 fontSize: 13,
               ),
             ),
@@ -496,7 +777,6 @@ class _AnimatedConfirmationDialogState extends State<_AnimatedConfirmationDialog
     });
   }
 
-
   @override
   void dispose() {
     _iconController.dispose();
@@ -518,7 +798,7 @@ class _AnimatedConfirmationDialogState extends State<_AnimatedConfirmationDialog
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: const Color(0xFF522E2E).withOpacity(0.1),
+                  color: MyApp.karantinaBrown.withOpacity(0.1),
                 ),
                 child: AnimatedBuilder(
                   animation: _iconAnimation,
@@ -531,7 +811,7 @@ class _AnimatedConfirmationDialogState extends State<_AnimatedConfirmationDialog
                   child: const Icon(
                       Icons.question_mark_rounded,
                       size: 52,
-                      color: Color(0xFF522E2E)
+                      color: MyApp.karantinaBrown
                   ),
                 ),
               ),
@@ -541,7 +821,7 @@ class _AnimatedConfirmationDialogState extends State<_AnimatedConfirmationDialog
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF522E2E),
+                  color: MyApp.karantinaBrown,
                 ),
               ),
               const SizedBox(height: 12),
@@ -565,8 +845,8 @@ class _AnimatedConfirmationDialogState extends State<_AnimatedConfirmationDialog
                     Expanded(
                       child: OutlinedButton(
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF522E2E),
-                          side: const BorderSide(color: Color(0xFF522E2E)),
+                          foregroundColor: MyApp.karantinaBrown,
+                          side: const BorderSide(color: MyApp.karantinaBrown),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
@@ -584,7 +864,7 @@ class _AnimatedConfirmationDialogState extends State<_AnimatedConfirmationDialog
                     Expanded(
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF522E2E),
+                          backgroundColor: MyApp.karantinaBrown,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           padding: const EdgeInsets.symmetric(vertical: 14),
@@ -670,77 +950,102 @@ Widget buildLaporanFooter({
   required String? idSuratTugas,
   required StLengkap suratTugas,
   required VoidCallback onSelesaiTugas,
+  required GlobalKey buatLaporanKey,
+  required GlobalKey selesaiTugasKey,
 }) {
-  return Consumer<AuthProvider>( // ✅ TAMBAH: Wrap dengan Consumer
+  return Consumer<AuthProvider>(
     builder: (context, authProvider, child) {
-      final userNip = authProvider.userNip; // ✅ TAMBAH: Ambil userNip
-
+      final userNip = authProvider.userNip;
       return Center(
         child: Column(
           children: [
             SizedBox(
-              width: 270,
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.note_add, color: Color(0xFF522E2E)),
-                onPressed: () async {
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => FormPeriksa(
-                        idSuratTugas: suratTugas.idSuratTugas,
-                        suratTugas: suratTugas,
-                        onSelesaiTugas: onSelesaiTugas,
-                        userNip: userNip ?? '', // ✅ GANTI: Teruskan userNip yang benar
-                      ),
+              width: 270,child: ElevatedButton(
+              key: buatLaporanKey,
+              onPressed: () async {
+                if (!context.mounted) return;
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => FormPeriksa(
+                      idSuratTugas: suratTugas.idSuratTugas,
+                      suratTugas: suratTugas,
+                      onSelesaiTugas: onSelesaiTugas,
+                      userNip: userNip ?? '',
                     ),
-                  );
-                  if (result == true) {
-                    Navigator.pop(context, true);
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: const Color(0xFFFEC559),
-                  foregroundColor: const Color(0xFF522E2E),
-                  elevation: 3,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(8)),
                   ),
-                ),
-                label: const Text(
-                  "Buat Laporan Pemeriksaan",
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF522E2E),
-                  ),
+                );
+                if (result == true && context.mounted) {
+                  Navigator.pop(context, true);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                backgroundColor: const Color(0xFFFEC559),
+                foregroundColor: MyApp.karantinaBrown,
+                elevation: 3,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(8)),
                 ),
               ),
+              child: const Text(
+                "Buat Laporan Pemeriksaan",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: MyApp.karantinaBrown,
+                ),
+              ),
+            ),
             ),
             const SizedBox(height: 20),
             SizedBox(
               width: 270,
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.check_circle_outline, color: Colors.white),
-                onPressed: () {
-                  showConfirmation(
-                    context: context,
-                    onConfirmed: () {
-                      onSelesaiTugas();
-                      Navigator.pop(context);
-                    },
-                  );
-                },
+              child: ElevatedButton(
+                key: selesaiTugasKey,
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: const Color(0xFF522E2E),
+                  backgroundColor: MyApp.karantinaBrown,
                   elevation: 3,
                   shape: const RoundedRectangleBorder(
                     borderRadius: BorderRadius.all(Radius.circular(8)),
-                    side: BorderSide(color: Color(0xFF522E2E), width: 2),
+                    side: BorderSide(color: MyApp.karantinaBrown, width: 2), // atau MyApp.karantinaBrown
                   ),
                 ),
-                label: const Text(
+                // disini yg diubah
+                onPressed: () {
+                  if (!context.mounted) return; //
+                  showAnimatedSelesaikanTugasDialog( //
+                    context: context, //
+                    onConfirmed: () async { //
+                      if (idSuratTugas == null || idSuratTugas.isEmpty) {
+                        if (kDebugMode) print('Error: idSuratTugas null atau kosong saat selesaikan tugas.');
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Gagal selesaikan tugas: ID Surat Tugas tidak valid.'), backgroundColor: Colors.red),
+                        );
+                        return;
+                      }
+                      bool apiSuccess = await HistoryApiService.sendTaskStatusUpdate(
+                        context: context,
+                        idSuratTugas: idSuratTugas,
+                        status: "selesai",
+                        keterangan: "Menyelesaikan Surat Tugas No: ${suratTugas.noSt}",
+                      );
+
+                      if (apiSuccess) {
+                        if (kDebugMode) print('✅ Status "selesai" berhasil dikirim ke API.');
+                        onSelesaiTugas(); //
+                        if (context.mounted) { //
+                          Navigator.pop(context); //
+                        }
+                      } else {
+                        if (kDebugMode) print('⚠️ Gagal mengirim status "selesai" ke API.');
+                      }
+                    },
+                  );
+                },
+                // SAMPE SINI
+                child: const Text(
                   "Selesai Tugas",
                   style: TextStyle(
                     fontSize: 16,

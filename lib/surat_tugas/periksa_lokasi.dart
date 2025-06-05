@@ -11,10 +11,10 @@ class PeriksaLokasi extends StatefulWidget {
   const PeriksaLokasi({super.key, required this.idSuratTugas});
 
   @override
-  _PeriksaLokasiState createState() => _PeriksaLokasiState();
+  PeriksaLokasiState createState() => PeriksaLokasiState();
 }
 
-class _PeriksaLokasiState extends State<PeriksaLokasi> {
+class PeriksaLokasiState extends State<PeriksaLokasi> {
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
   final CustomInfoWindowController _customInfoWindowController = CustomInfoWindowController();
@@ -140,7 +140,6 @@ class _PeriksaLokasiState extends State<PeriksaLokasi> {
     }
   }
 
-  // Fungsi untuk membuka Google Maps
   void _openGoogleMaps(LatLng position) async {
     final Uri url = Uri.parse(
         "https://www.google.com/maps/search/?api=1&query=${position.latitude},${position.longitude}");

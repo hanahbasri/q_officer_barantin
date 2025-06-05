@@ -68,7 +68,6 @@ class NotificationService {
         }
       });
 
-      // Set up token refresh listener
       _messaging.onTokenRefresh.listen((newToken) {
         if (kDebugMode) print("📲 FCM Token refreshed: $newToken");
         try {
@@ -85,7 +84,6 @@ class NotificationService {
     }
   }
 
-  // Menangani pesan yang masuk
   static void _handleIncomingMessage(RemoteMessage message) {
     final notif = message.notification;
     final title = notif?.title ?? message.data['title'] ?? 'Q-Officer';
@@ -116,11 +114,10 @@ class NotificationService {
       title,
       body,
       notifDetails,
-      payload: message.data.toString(), // Kirim data sebagai payload
+      payload: message.data.toString(),
     );
   }
 
-  // Menangani klik notifikasi dan routing
   static void _handleNotificationClick(dynamic payload) {
     if (payload == null || navigatorKey?.currentState == null) return;
 
@@ -131,7 +128,7 @@ class NotificationService {
     } else if (payload is Map) {
       notifData = Map<String, dynamic>.from(payload);
     } else {
-      return; // Format data tidak valid
+      return;
     }
 
     if (kDebugMode) print("📬 Handling notification click with data: $notifData");
@@ -141,11 +138,10 @@ class NotificationService {
 
     bool isSuratTugas = false;
 
-    // Periksa berdasarkan 'type' di data
+
     if (notifData.containsKey('type') && notifData['type'] == 'surat_tugas') {
       isSuratTugas = true;
     }
-    // Atau periksa berdasarkan judul notifikasi jika tidak ada 'type'
     else if (notifData.containsKey('title')) {
       String title = notifData['title'].toString().toLowerCase();
       if (title.contains('surat tugas') || title.contains('pemeriksaan')) {
@@ -154,10 +150,8 @@ class NotificationService {
     }
 
     if (isSuratTugas) {
-      // Navigasi ke halaman Surat Tugas
       navigatorKey!.currentState!.pushNamed('/surat-tugas');
     } else {
-      // Default ke detail notifikasi
       navigatorKey!.currentState!.pushNamed(
         '/notif-detail',
         arguments: notifData,
@@ -166,14 +160,11 @@ class NotificationService {
   }
 
   static void _addNotificationToHistory(Map<String, dynamic> notifData) {
-    // Check if we have a title and body
     String title = notifData['title'] ?? notifData['notification']?['title'] ?? 'Q-Officer';
     String body = notifData['body'] ?? notifData['notification']?['body'] ?? '';
 
-    // Only add to history if not already there (using timestamp as check)
     int timestamp = notifData['timestamp'] ?? DateTime.now().millisecondsSinceEpoch;
 
-    // Check if this notification is already in history
     bool alreadyExists = _notificationProvider.notifications.any(
             (notification) => notification['timestamp'] == timestamp
     );
@@ -192,18 +183,16 @@ class NotificationService {
   static void _navigateBasedOnNotificationType(Map<String, dynamic> notifData) {
     bool isSuratTugas = false;
 
-    // Check if it's a surat tugas notification
     if (notifData.containsKey('type') && notifData['type'] == 'surat_tugas') {
       isSuratTugas = true;
     }
-    // Or check by title
     else if (notifData.containsKey('title')) {
       String title = notifData['title'].toString().toLowerCase();
       if (title.contains('surat tugas') || title.contains('pemeriksaan')) {
         isSuratTugas = true;
       }
     }
-    // Also check in the notification object if present
+
     else if (notifData.containsKey('notification') &&
         notifData['notification'] is Map &&
         notifData['notification'].containsKey('title')) {
@@ -214,7 +203,6 @@ class NotificationService {
     }
 
     if (isSuratTugas) {
-      // Navigate to the surat tugas page
       navigatorKey!.currentState!.pushNamed('/surat-tugas');
     } else {
       // Default to notification detail
@@ -225,16 +213,13 @@ class NotificationService {
     }
   }
 
-  // Menguraikan string payload menjadi Map
   static Map<String, dynamic> _parseStringPayload(String payload) {
     try {
       if (payload.startsWith('{') && payload.endsWith('}')) {
-        // Jika payload dalam format JSON
         return Map<String, dynamic>.from(
             jsonDecode(payload) as Map<dynamic, dynamic>
         );
       } else {
-        // Format string sederhana
         Map<String, dynamic> result = {};
         payload = payload.replaceAll('{', '').replaceAll('}', '');
         List<String> pairs = payload.split(',');
@@ -266,7 +251,6 @@ class NotificationService {
       'isRead': false,
     });
 
-    // Show local notification
     const androidDetails = AndroidNotificationDetails(
       'barantin_channel',
       'Badan Karantina Indonesia Notifications',
@@ -287,7 +271,6 @@ class NotificationService {
   }
 
   static Future<void> testSuratTugasNotification() async {
-    // Add to notification history
     _notificationProvider.addNotification({
       'title': 'Surat Tugas Baru 📢',
       'body': 'Anda memiliki surat tugas baru yang perlu ditindaklanjuti',
@@ -320,7 +303,6 @@ class NotificationService {
     );
   }
 
-  // Parse JSON string to Map
   static dynamic jsonDecode(String source) {
     try {
       return json.decode(source);

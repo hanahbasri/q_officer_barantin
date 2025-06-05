@@ -1,30 +1,34 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:q_officer_barantin/main.dart';
 import 'package:q_officer_barantin/models/komoditas.dart';
 import 'package:q_officer_barantin/models/lokasi.dart';
 import 'package:q_officer_barantin/models/petugas.dart';
-import 'package:q_officer_barantin/services/surat_tugas_service.dart'; // Import SuratTugasService
 import 'st_aktif.dart';
 import 'st_tertunda.dart';
 import '../databases/db_helper.dart';
 import '../services/auth_provider.dart';
 import 'detail_laporan.dart';
 import 'package:q_officer_barantin/models/st_lengkap.dart';
+import 'package:q_officer_barantin/models/hasil_pemeriksaan.dart';
 
 class SuratTugasPage extends StatefulWidget {
   const SuratTugasPage({super.key});
 
   @override
-  _SuratTugasPageState createState() => _SuratTugasPageState();
+  SuratTugasPageState createState() => SuratTugasPageState();
 }
 
-class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProviderStateMixin {
+class SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProviderStateMixin {
   bool hasActiveTask = false;
   StLengkap? suratTugasAktif;
   List<StLengkap> suratTugasTertunda = [];
   List<StLengkap> suratTugasSelesai = [];
   bool _isLoading = false;
+  String _selectedSelesaiFilter = "7 Hari Terakhir"; // Default filter
+  List<String> _selesaiFilterOptions = ["7 Hari Terakhir", "31 Hari Terakhir", "3 Bulan Terakhir", "Semua"];
+  List<StLengkap> _filteredSuratTugasSelesai = [];
 
   late AnimationController _controller;
   late Animation<double> _animation;
@@ -58,42 +62,48 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
     super.dispose();
   }
 
+  // Di dalam class SuratTugasPageState (file surat_tugas.dart)
+
   Future<void> _loadSuratTugas() async {
     if (_isLoading) {
-      if (kDebugMode) print('🔄 _loadSuratTugas: Sudah memuat, melewati.');
+      if (kDebugMode) print('🔄 _loadSuratTugas: Sedang memuat, request dilewati.');
       return;
     }
 
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       suratTugasAktif = null;
       hasActiveTask = false;
       suratTugasTertunda.clear();
       suratTugasSelesai.clear();
+      _filteredSuratTugasSelesai.clear(); // Reset juga list yang sudah difilter
     });
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final userNip = authProvider.userNip;
 
-      if (userNip == null) {
+      if (userNip == null) { // Periksa nullability userNip
         throw Exception('NIP Pengguna tidak ditemukan');
       }
 
       final db = DatabaseHelper();
 
-      // PERBAIKAN: Ambil status lokal SEBELUM sync
+      // Ambil status lokal sebelum sinkronisasi
       final localDataBeforeSync = await db.getData('Surat_Tugas');
       Map<String, String> localStatuses = {};
       for (var item in localDataBeforeSync) {
-        localStatuses[item['id_surat_tugas']] = item['status'];
+        if (item['id_surat_tugas'] != null && item['status'] != null) { // Tambah null check
+          localStatuses[item['id_surat_tugas']] = item['status'];
+        }
       }
 
       if (kDebugMode) print('🔄 _loadSuratTugas: Menyinkronkan data dari API untuk NIP: $userNip');
       await db.syncSuratTugasFromApi(userNip);
       if (kDebugMode) print('✅ _loadSuratTugas: Sinkronisasi API selesai.');
 
-      final data = await db.getData('Surat_Tugas');
+      final data = await db.getData('Surat_Tugas'); // Ambil data terbaru setelah sinkronisasi
 
       if (kDebugMode) {
         print('📋 Total surat tugas di database (setelah sync): ${data.length}');
@@ -104,55 +114,107 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
       List<StLengkap> tempSuratTugasSelesai = [];
 
       for (var item in data) {
-        String currentStatus = item['status'] ?? '';
-        final idSuratTugas = item['id_surat_tugas'];
+        String currentStatus = item['status'] ?? 'tertunda'; // Default jika null
+        final idSuratTugas = item['id_surat_tugas']?.toString(); // Ambil dan pastikan String
 
-        // PERBAIKAN: Preservasi status lokal yang penting
+        if (idSuratTugas == null || idSuratTugas.isEmpty) {
+          if (kDebugMode) print('⚠️ Melewati item ST karena id_surat_tugas null atau kosong: $item');
+          continue; // Lewati item ini jika ID ST tidak valid
+        }
+
+        // Logika mempertahankan status lokal
         if (localStatuses.containsKey(idSuratTugas)) {
           final localStatus = localStatuses[idSuratTugas]!;
-
-          // Prioritaskan status lokal jika sudah 'aktif', 'dikirim', atau 'selesai'
-          if (localStatus == 'aktif' || localStatus == 'dikirim' || localStatus == 'selesai') {
-            currentStatus = localStatus;
-
-            // Update database untuk mempertahankan status lokal
-            if (currentStatus != item['status']) {
+          if (['aktif', 'dikirim', 'selesai'].contains(localStatus)) {
+            if (currentStatus != localStatus) {
+              currentStatus = localStatus; // Utamakan status lokal yang lebih maju
               await db.updateStatusTugas(idSuratTugas, currentStatus);
-              if (kDebugMode) print('💡 Mempertahankan status lokal "$currentStatus" untuk ${item['no_st']}');
+              if (kDebugMode) print('💡 Mempertahankan/Mengupdate status lokal menjadi "$currentStatus" untuk ST: ${item['no_st']}');
             }
           }
         }
 
         if (kDebugMode) {
-          print('🔍 Memproses surat tugas: $idSuratTugas dengan status akhir: $currentStatus');
+          print('🔍 Memproses ST ID: $idSuratTugas, No ST: ${item['no_st']}, Status akhir: $currentStatus');
         }
 
         try {
-          final petugasData = (await db.getPetugasById(idSuratTugas)).map((p) => Petugas.fromDbMap(p)).toList();
-          final lokasiData = (await db.getLokasiById(idSuratTugas)).map((l) => Lokasi.fromDbMap(l)).toList();
-          final komoditasData = (await db.getKomoditasById(idSuratTugas)).map((k) => Komoditas.fromDbMap(k)).toList();
+          final petugasData = (await db.getPetugasById(idSuratTugas)).map((p) => Petugas.fromDbMap(p)).toList(); //
+          final lokasiData = (await db.getLokasiById(idSuratTugas)).map((l) => Lokasi.fromDbMap(l)).toList(); //
+          final komoditasData = (await db.getKomoditasById(idSuratTugas)).map((k) => Komoditas.fromDbMap(k)).toList(); //
 
-          final tugas = StLengkap.fromDbMap(item, petugasData, lokasiData, komoditasData);
-          final tugasWithCorrectedStatus = tugas.copyWith(status: currentStatus);
+          DateTime? tanggalPenyelesaianUntukFilter;
 
-          // PERBAIKAN: Status 'dikirim' dan 'aktif' masuk kategori aktif
-          if (currentStatus == 'aktif' || currentStatus == 'dikirim') {
-            if (tempSuratTugasAktif != null) {
-              if (kDebugMode) print('⚠️ Ditemukan beberapa tugas aktif/dikirim. Menimpa tugas aktif.');
+          if (currentStatus == 'selesai') { //
+            if (kDebugMode) { //
+              print("DEBUG _loadSuratTugas: ST [${item['no_st']}] berstatus 'selesai'. Mencari Hasil Pemeriksaan..."); //
             }
-            tempSuratTugasAktif = tugasWithCorrectedStatus;
-          } else if (currentStatus == 'tertunda' || currentStatus == 'Proses') {
-            tempSuratTugasTertunda.add(tugasWithCorrectedStatus);
-          } else if (currentStatus == 'selesai') {
-            tempSuratTugasSelesai.add(tugasWithCorrectedStatus);
+            List<HasilPemeriksaan> hasilPemeriksaanList = await db.getHasilPemeriksaanById(idSuratTugas); //
+
+            if (kDebugMode) { //
+              print("   Jumlah Hasil Pemeriksaan ditemukan untuk ST [${item['no_st']}]: ${hasilPemeriksaanList.length}"); //
+            }
+
+            if (hasilPemeriksaanList.isNotEmpty) { //
+              hasilPemeriksaanList.sort((a, b) {
+                DateTime? dateA = DateTime.tryParse(a.tanggal);
+                DateTime? dateB = DateTime.tryParse(b.tanggal);
+                if (dateA == null && dateB == null) return 0;
+                if (dateA == null) return 1; 
+                if (dateB == null) return -1;
+                return dateB.compareTo(dateA);
+              });
+
+              String tanggalPeriksaStringDariDb = hasilPemeriksaanList.first.tanggal; // Ambil yang terbaru
+              tanggalPenyelesaianUntukFilter = DateTime.tryParse(tanggalPeriksaStringDariDb); //
+
+              if (kDebugMode) { //
+                print("   String 'tanggal' (tgl_periksa) dari HasilPemeriksaan TERBARU: '$tanggalPeriksaStringDariDb'"); //
+                if (tanggalPenyelesaianUntukFilter != null) { //
+                  print("   ✅ PARSING BERHASIL: tanggalPenyelesaianUntukFilter diisi dengan: $tanggalPenyelesaianUntukFilter"); //
+                } else {
+                  print("   ❌ PARSING GAGAL untuk string: '$tanggalPeriksaStringDariDb'"); //
+                }
+              }
+            } else if (kDebugMode) { //
+              print("   ⚠️ Tidak ada Hasil Pemeriksaan ditemukan untuk ST Selesai [${item['no_st']}]."); //
+            }
           }
-        } catch (innerError) {
-          if (kDebugMode) {
-            print('❌ Error memproses data terkait untuk $idSuratTugas: $innerError');
-            print('❌ Stack trace untuk error internal: ${StackTrace.current}');
+
+          final tugas = StLengkap.fromDbMap( //
+            item,
+            petugasData,
+            lokasiData,
+            komoditasData,
+            tanggalSelesai: tanggalPenyelesaianUntukFilter,
+          );
+
+          if (kDebugMode && currentStatus == 'selesai') { //
+            print("   >>> Objek StLengkap [${tugas.noSt}] dibuat. Nilai tugas.tanggalSelesai: ${tugas.tanggalSelesai}");
+          }
+
+          final tugasDenganStatusDanTanggalSelesai = tugas.copyWith(
+              status: currentStatus,
+              tanggalSelesai: tugas.tanggalSelesai
+          );
+
+          if (currentStatus == 'aktif' || currentStatus == 'dikirim') { //
+            if (tempSuratTugasAktif != null && tempSuratTugasAktif.idSuratTugas != tugasDenganStatusDanTanggalSelesai.idSuratTugas) { //
+              if (kDebugMode) print('⚠️ Ditemukan beberapa tugas aktif/dikirim. Menimpa tugas aktif lama dengan ${tugasDenganStatusDanTanggalSelesai.noSt}.'); //
+            }
+            tempSuratTugasAktif = tugasDenganStatusDanTanggalSelesai; //
+          } else if (currentStatus == 'tertunda' || currentStatus == 'Proses') { //
+            tempSuratTugasTertunda.add(tugasDenganStatusDanTanggalSelesai); //
+          } else if (currentStatus == 'selesai') { //
+            tempSuratTugasSelesai.add(tugasDenganStatusDanTanggalSelesai); //
+          }
+        } catch (innerError, stackTrace) { //
+          if (kDebugMode) { //
+            print('❌ Error memproses data terkait untuk ST ID $idSuratTugas: $innerError'); //
+            print('❌ Stack trace internal: $stackTrace'); //
           }
         }
-      }
+      } // Akhir loop for
 
       if (!mounted) return;
 
@@ -160,39 +222,46 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
         suratTugasAktif = tempSuratTugasAktif;
         hasActiveTask = tempSuratTugasAktif != null;
         suratTugasTertunda = tempSuratTugasTertunda;
-        suratTugasSelesai = tempSuratTugasSelesai;
+        suratTugasSelesai = tempSuratTugasSelesai; //
 
         if (kDebugMode) {
-          print('📊 Setelah memuat: hasActiveTask = $hasActiveTask');
-          print('📊 Tugas aktif: ${suratTugasAktif?.noSt ?? 'Tidak ada'} (Status: ${suratTugasAktif?.status ?? 'N/A'})');
-          print('📊 Jumlah tugas tertunda: ${suratTugasTertunda.length}');
-          print('📊 Jumlah tugas selesai: ${suratTugasSelesai.length}');
+          print('📊 Setelah memuat semua ST: hasActiveTask = $hasActiveTask'); //
+          print('📊 Tugas aktif: ${suratTugasAktif?.noSt ?? 'Tidak ada'} (Status: ${suratTugasAktif?.status ?? 'N/A'})'); //
+          print('📊 Jumlah tugas tertunda: ${suratTugasTertunda.length}'); //
+          print('📊 Jumlah tugas selesai (sebelum filter): ${suratTugasSelesai.length}'); //
+          for (var st in suratTugasSelesai) {
+            print("   - ST Selesai: ${st.noSt}, Tanggal Selesai di Model: ${st.tanggalSelesai}, Tanggal ST: ${st.tanggal}");
+          }
         }
       });
-    } catch (e) {
-      if (kDebugMode) {
-        print('❌ Error memuat surat tugas: $e');
-        print('❌ Stack trace untuk error pemuatan: ${StackTrace.current}');
+
+      if (mounted) {
+        _applySelesaiFilter(); // Panggil filter setelah semua data ST Selesai di-set
+      }
+
+    } catch (e, stackTrace) { //
+      if (kDebugMode) { //
+        print('❌ Error besar di _loadSuratTugas: $e'); //
+        print('❌ Stack trace error besar: $stackTrace'); //
       }
       if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal memuat data: ${e.toString()}'),
-          backgroundColor: Colors.red,
+      ScaffoldMessenger.of(context).showSnackBar( //
+        SnackBar( //
+          content: Text('Gagal memuat data: ${e.toString()}'), //
+          backgroundColor: Colors.red, //
         ),
       );
-
-      setState(() {
-        suratTugasAktif = null;
-        hasActiveTask = false;
-        suratTugasTertunda = [];
-        suratTugasSelesai = [];
+      setState(() { //
+        suratTugasAktif = null; //
+        hasActiveTask = false; //
+        suratTugasTertunda = []; //
+        suratTugasSelesai = []; //
+        _filteredSuratTugasSelesai = [];
       });
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
+      if (mounted) { //
+        setState(() { //
+          _isLoading = false; //
         });
       }
     }
@@ -209,7 +278,6 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
       if (kDebugMode) print('🔄 Memuat ulang surat tugas setelah menerima tugas...');
       await _loadSuratTugas();
 
-      // Pastikan widget masih mounted sebelum mengakses context atau navigasi
       if (!mounted) {
         if (kDebugMode) print('Widget tidak lagi mounted setelah _loadSuratTugas selesai.');
         return;
@@ -239,7 +307,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
         print('❌ Error saat menerima tugas: $e');
         print('❌ Stack trace: ${StackTrace.current}');
       }
-      if (!mounted) return; // Pastikan mounted sebelum show snackbar
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Gagal menerima tugas. Terjadi kesalahan.')),
       );
@@ -260,6 +328,90 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
   Future<void> _refreshData() async {
     if (kDebugMode) print('🔄 Memperbarui data...');
     await _loadSuratTugas();
+  }
+
+  // Di dalam class SuratTugasPageState (misalnya, setelah method _refreshData)
+
+  void _applySelesaiFilter() {
+    if (!mounted) return;
+
+    DateTime now = DateTime.now();
+    List<StLengkap> tempFiltered = [];
+
+    if (suratTugasSelesai.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _filteredSuratTugasSelesai = [];
+        });
+      }
+      return;
+    }
+
+    if (_selectedSelesaiFilter == "Semua") {
+      tempFiltered = List.from(suratTugasSelesai);
+    } else {
+      Duration filterDuration;
+      if (_selectedSelesaiFilter == "7 Hari Terakhir") {
+        filterDuration = const Duration(days: 7);
+      } else if (_selectedSelesaiFilter == "31 Hari Terakhir") {
+        filterDuration = const Duration(days: 31);
+      } else if (_selectedSelesaiFilter == "3 Bulan Terakhir") {
+        filterDuration = const Duration(days: 90);
+      } else {
+        tempFiltered = List.from(suratTugasSelesai);
+        if (mounted) {
+          setState(() {
+            _filteredSuratTugasSelesai = tempFiltered;
+          });
+        }
+        return;
+      }
+
+      DateTime cutoffDate = now.subtract(filterDuration);
+
+      for (var tugas in suratTugasSelesai) {
+        DateTime? taskDate;
+        if (kDebugMode) { //
+          print("DEBUG _applySelesaiFilter: Memproses ST [${tugas.noSt}]"); //
+          print("   - tugas.tanggalSelesai (dari model): ${tugas.tanggalSelesai}"); //
+          print("   - tugas.tanggal (tanggal ST): ${tugas.tanggal}"); //
+        }
+
+        try {
+          if (tugas.tanggalSelesai != null) { // Menggunakan field tanggalSelesai
+            taskDate = tugas.tanggalSelesai; //
+            if (kDebugMode) print("   -> Digunakan taskDate dari tugas.tanggalSelesai: $taskDate"); //
+          } else {
+            taskDate = DateTime.tryParse(tugas.tanggal); // Fallback ke tanggal ST
+            if (kDebugMode) { //
+              if (taskDate != null) {
+                print("   -> FALLBACK: Digunakan taskDate dari tugas.tanggal (Tanggal ST): $taskDate (karena tugas.tanggalSelesai null)."); //
+              } else {
+                print("   -> FALLBACK: GAGAL PARSE tugas.tanggal: '${tugas.tanggal}' (karena tugas.tanggalSelesai null)."); //
+              }
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) { //
+            print("   -> ERROR PARSING TANGGAL untuk ST ${tugas.noSt}: $e"); //
+          }
+        }
+
+        if (taskDate != null && taskDate.isAfter(cutoffDate)) {
+          tempFiltered.add(tugas);
+        }
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _filteredSuratTugasSelesai = tempFiltered;
+      });
+    }
+
+    if (kDebugMode) {
+      print("Filter selesai diterapkan: $_selectedSelesaiFilter, Jumlah hasil: ${_filteredSuratTugasSelesai.length}");
+    }
   }
 
   Widget _buildRow(String label, String? value) {
@@ -316,7 +468,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
     return Scaffold(
       appBar: AppBar(
         title: Text("Pemeriksaan Lapangan", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Color(0xFF522E2E),
+        backgroundColor: MyApp.karantinaBrown,
         foregroundColor: Colors.white,
         centerTitle: true,
         actions: [
@@ -344,9 +496,97 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
         onRefresh: _refreshData,
         child: ListView(
           children: [
+            // MASUK
+            ExpansionTile(
+              title: const Text("Surat Tugas Masuk", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF522E2E),),),
+              leading: AnimatedBuilder(
+                animation: _animation,
+                builder: (context, child) {
+                  return Transform.scale(
+                    scale: 1 + _animation.value,
+                    child: child,
+                  );
+                },
+                child: Icon(
+                  Icons.circle,
+                  color: Colors.orange,
+                ),
+              ),
+              children: suratTugasTertunda.isEmpty
+                  ? [_buildNotFoundText("Tidak ada surat tugas tertunda saat ini")]
+                  : suratTugasTertunda.map((tugas) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  child: Card(
+                    color: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 3,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // HEADER
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.orange,
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  tugas.noSt,
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              TextButton(
+                                style: TextButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+                                ),
+                                onPressed: () {
+                                  Navigator.push(context,
+                                    MaterialPageRoute(
+                                      builder: (context) => SuratTugasTertunda(
+                                        suratTugas: tugas,
+                                        onTerimaTugas: () => _terimaTugas(tugas),
+                                        hasActiveTask: hasActiveTask,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: const Text("Lihat Detail", style: TextStyle(color: Colors.orange)),
+                              )
+                            ],
+                          ),
+                        ),
+                        // BODY
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildRow("Dasar", tugas.dasar),
+                              _buildRow(
+                                "Lokasi",
+                                tugas.lokasi.isNotEmpty ? tugas.lokasi[0].namaLokasi : "-",
+                              ),
+                              _buildRow("Tanggal Tugas", tugas.tanggal),
+                              _buildRow("Perihal", tugas.hal),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
             // ---- AKTIF ----
             ExpansionTile(
-              title: Text("Surat Tugas Aktif", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF522E2E),),),
+              title: Text("Surat Tugas Aktif", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: MyApp.karantinaBrown,),),
               leading: AnimatedBuilder(
                 animation: _animation,
                 builder: (context, child) {
@@ -463,98 +703,12 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
               ]
                   : [_buildNotFoundText("Tidak ada surat tugas aktif saat ini")],
             ),
-
-            ExpansionTile(
-              title: const Text("Surat Tugas Tertunda", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF522E2E),),),
-              leading: AnimatedBuilder(
-                animation: _animation,
-                builder: (context, child) {
-                  return Transform.scale(
-                    scale: 1 + _animation.value,
-                    child: child,
-                  );
-                },
-                child: Icon(
-                  Icons.circle,
-                  color: Colors.orange,
-                ),
-              ),
-              children: suratTugasTertunda.isEmpty
-                  ? [_buildNotFoundText("Tidak ada surat tugas tertunda saat ini")]
-                  : suratTugasTertunda.map((tugas) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  child: Card(
-                    color: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    elevation: 3,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // HEADER
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Colors.orange,
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  tugas.noSt,
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                              TextButton(
-                                style: TextButton.styleFrom(
-                                  backgroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                                ),
-                                onPressed: () {
-                                  Navigator.push(context,
-                                    MaterialPageRoute(
-                                      builder: (context) => SuratTugasTertunda(
-                                        suratTugas: tugas,
-                                        onTerimaTugas: () => _terimaTugas(tugas),
-                                        hasActiveTask: hasActiveTask,
-                                      ),
-                                    ),
-                                  );
-                                },
-                                child: const Text("Lihat Detail", style: TextStyle(color: Colors.orange)),
-                              )
-                            ],
-                          ),
-                        ),
-                        // BODY
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildRow("Dasar", tugas.dasar),
-                              _buildRow(
-                                "Lokasi",
-                                tugas.lokasi.isNotEmpty ? tugas.lokasi[0].namaLokasi : "-",
-                              ),
-                              _buildRow("Tanggal Tugas", tugas.tanggal),
-                              _buildRow("Perihal", tugas.hal),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-
             // --- SELESAI ---
             ExpansionTile(
-              title: const Text("Surat Tugas Selesai", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF522E2E),),),
+              title: const Text(
+                "Surat Tugas Selesai",
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: MyApp.karantinaBrown),
+              ),
               leading: AnimatedBuilder(
                 animation: _animation,
                 builder: (context, child) {
@@ -563,90 +717,131 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
                     child: child,
                   );
                 },
-                child: Icon(
+                child: const Icon(
                   Icons.circle,
                   color: Colors.blue,
                 ),
               ),
-              children: suratTugasSelesai.isEmpty
-                  ? [_buildNotFoundText("Tidak ada surat tugas selesai saat ini")]
-                  : suratTugasSelesai.map((tugas) {
-                return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  elevation: 3,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              initiallyExpanded: true,
+              children: [ // Kurung siku pembuka untuk children ExpansionTile
+                // Widget untuk Pilihan Filter
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      // HEADER
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.blue[800],
-                          borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+                      Text("Filter: ", style: TextStyle(fontSize: 14, color: Colors.grey[700])),
+                      const SizedBox(width: 8),
+                      DropdownButton<String>(
+                        value: _selectedSelesaiFilter,
+                        icon: const Icon(Icons.filter_list_alt, size: 20),
+                        elevation: 16,
+                        style: TextStyle(color: MyApp.karantinaBrown, fontSize: 14),
+                        underline: Container(
+                          height: 1,
+                          color: MyApp.karantinaBrown.withOpacity(0.5),
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                tugas.noSt,
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                            TextButton(
-                              style: TextButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                              ),
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => DetailLaporan(
-                                      idSuratTugas: tugas.idSuratTugas,
-                                      suratTugas: tugas,
-                                      onSelesaiTugas: () {},
-                                      isViewOnly: true,
-                                      showDetailHasil: true,
-                                      customTitle: "Surat Tugas Selesai",
-                                    ),
-                                  ),
-                                );
-                              },
-                              child: const Text("Lihat Detail", style: TextStyle(color: Colors.blue)),
-                            )
-                          ],
-                        ),
-                      ),
-                      // BODY
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.vertical(bottom: Radius.circular(10)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildRow("Dasar", tugas.dasar),
-                            _buildRow(
-                              "Lokasi",
-                              tugas.lokasi.isNotEmpty ? tugas.lokasi[0].namaLokasi : "-",
-                            ),
-                            _buildRow("Tanggal Tugas", tugas.tanggal),
-                            _buildRow("Perihal", tugas.hal),
-                          ],
-                        ),
+                        onChanged: (String? newValue) {
+                          if (newValue != null) {
+                            setState(() {
+                              _selectedSelesaiFilter = newValue;
+                            });
+                            _applySelesaiFilter(); // Terapkan filter saat pilihan berubah
+                          }
+                        },
+                        items: _selesaiFilterOptions.map<DropdownMenuItem<String>>((String value) {
+                          return DropdownMenuItem<String>(
+                            value: value,
+                            child: Text(value),
+                          );
+                        }).toList(),
                       ),
                     ],
                   ),
-                );
-              }).toList(),
-            ),
+                ),
 
-            // Tombol Sinkronisasi Data (hanya tampil jika ada data yang belum disinkronkan)
+                // Daftar Surat Tugas Selesai yang Sudah Difilter
+                _filteredSuratTugasSelesai.isEmpty
+                    ? _buildNotFoundText("Tidak ada surat tugas selesai sesuai filter saat ini")
+                    : Column( // Dibungkus Column agar tidak error di dalam ExpansionTile
+                  children: _filteredSuratTugasSelesai.map((tugas) {
+                    // Card untuk setiap tugas selesai
+                    return Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      elevation: 3,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // HEADER
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.blue[800],
+                              borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    tugas.noSt,
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                                TextButton(
+                                  style: TextButton.styleFrom(
+                                    backgroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+                                  ),
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => DetailLaporan(
+                                          idSuratTugas: tugas.idSuratTugas,
+                                          suratTugas: tugas,
+                                          onSelesaiTugas: () {},
+                                          isViewOnly: true,
+                                          showDetailHasil: true,
+                                          customTitle: "Surat Tugas Selesai",
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  child: const Text("Lihat Detail", style: TextStyle(color: Colors.blue)),
+                                )
+                              ],
+                            ),
+                          ),
+                          // BODY
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.vertical(bottom: Radius.circular(10)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildRow("Dasar", tugas.dasar),
+                                _buildRow(
+                                  "Lokasi",
+                                  tugas.lokasi.isNotEmpty ? tugas.lokasi[0].namaLokasi : "-",
+                                ),
+                                _buildRow("Tanggal Tugas", tugas.tanggal),
+                                _buildRow("Perihal", tugas.hal),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ], // Kurung siku penutup untuk children ExpansionTile
+            ),
             Consumer<AuthProvider>(
               builder: (context, authProvider, child) {
                 return Padding(
@@ -661,7 +856,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
                             });
 
                             final db = DatabaseHelper();
-                            final userNip = authProvider.userId; // Ambil NIP pengguna
+                            final userNip = authProvider.userId;
 
                             if (userNip == null) {
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -673,7 +868,7 @@ class _SuratTugasPageState extends State<SuratTugasPage> with SingleTickerProvid
                               return;
                             }
 
-                            await db.syncUnsentData(userNip); // Teruskan NIP
+                            await db.syncUnsentData(userNip);
 
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(

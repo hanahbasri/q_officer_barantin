@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:q_officer_barantin/beranda/side_bar.dart';
+import 'package:q_officer_barantin/main.dart';
 import 'package:q_officer_barantin/services/auth_provider.dart';
 import 'package:shimmer/shimmer.dart';
 
@@ -48,15 +49,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           children: [
             RotationTransition(
               turns: Tween(begin: 0.0, end: 1.0).animate(_iconController),
-              child: const Icon(Icons.hourglass_empty_rounded, size: 48, color: Color(0xFF522E2E)),
+              child: const Icon(Icons.hourglass_empty_rounded, size: 48, color: MyApp.karantinaBrown),
             ),
             const SizedBox(height: 16),
-            const Text('Fitur Kosong', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF522E2E))),
+            const Text('Fitur Kosong', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: MyApp.karantinaBrown)),
             const SizedBox(height: 8),
             const Text('Mohon maaf, halaman ini masih kosong.\nSilakan coba kembali nanti.', textAlign: TextAlign.center),
             const SizedBox(height: 24),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF522E2E), foregroundColor: Colors.white),
+              style: ElevatedButton.styleFrom(backgroundColor: MyApp.karantinaBrown, foregroundColor: Colors.white),
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('Tutup'),
             ),
@@ -228,7 +229,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         children: [
           Text('Selamat Datang,', style: TextStyle(fontSize: 16, color: Colors.grey[700])),
           const SizedBox(height: 4),
-          Text(userName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF4E342E))),
+          Text(userName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: MyApp.karantinaBrown)),
           const SizedBox(height: 4),
           Text('Siap memulai hari yang produktif?', style: TextStyle(fontSize: 14, color: Colors.grey[600])),
           const SizedBox(height: 10),
@@ -236,10 +237,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             children: [
               ElevatedButton.icon(
                 onPressed: () {
-                  // Import NotificationService di bagian atas file
                   NotificationService.testNotification(
-                    title: 'Test Notification',
-                    body: 'This is a test notification',
+                    title: 'Tes Notifikasi',
+                    body: 'Ini adalah body dari tes notifikasi',
                   );
                 },
                 icon: const Icon(Icons.notifications_active, size: 18),
@@ -257,7 +257,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
     );
   }
-
 
   Widget _buildMenuCard({
     required String icon,
@@ -297,9 +296,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       title,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
-                        fontSize: 12.5, // sedikit dikecilkan
+                        fontSize: 12.5,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF4E342E),
+                        color: MyApp.karantinaBrown,
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,

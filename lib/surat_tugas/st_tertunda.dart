@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:q_officer_barantin/services/history_service.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 import 'periksa_lokasi.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:q_officer_barantin/models/st_lengkap.dart';
 import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:q_officer_barantin/services/history_service.dart';
 
 class SuratTugasTertunda extends StatefulWidget {
   final StLengkap suratTugas;
@@ -49,7 +51,6 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
       _checkTutorialStatus();
     }
 
-    // Inisialisasi tutorial setelah build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initTutorial();
       Future.delayed(const Duration(milliseconds: 600), () {
@@ -68,7 +69,6 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
   }
 
   Future<void> _saveTutorialStatus() async {
-    // Hanya simpan jika bukan mode tutorial
     if (!widget.showTutorialImmediately) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('seen_st_tertunda_tutorial', true);
@@ -306,7 +306,6 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
         foregroundColor: Colors.white,
         centerTitle: true,
         actions: widget.showTutorialImmediately ? [] : [
-          // Tombol tutorial di AppBar (hanya untuk mode normal)
           IconButton(
             icon: const Icon(Icons.help_outline),
             onPressed: () {
@@ -322,7 +321,6 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header Card dengan Judul Surat Tugas (diubah menjadi dropdown)
               Card(
                 key: headerCardKey,
                 margin: const EdgeInsets.only(bottom: 16),
@@ -331,7 +329,7 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                clipBehavior: Clip.antiAlias, // Ditambahkan untuk memastikan child menghormati border radius
+                clipBehavior: Clip.antiAlias,
                 child: InkWell(
                   onTap: () {
                     setState(() {
@@ -381,7 +379,6 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                         ),
                       ),
 
-                      // Konten yang diperluas untuk kartu header
                       if (_isHeaderExpanded) ...[
                         Container(
                           width: double.infinity,
@@ -467,7 +464,6 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                 ),
               ),
 
-              // 1. Kartu untuk Petugas - Dengan scrollbar vertikal
               Card(
                 key: petugasCardKey,
                 color: Colors.white,
@@ -748,19 +744,34 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                         ),
                       );
                     }
+                        // dari sini
                         : widget.hasActiveTask
                         ? () {
-                      if (kDebugMode) print('🚫 Menampilkan dialog tidak tersedia karena hasActiveTask: ${widget.hasActiveTask}');
-                      _showUnavailable(context);
-                    }
-                        : () async {
-                      if (kDebugMode) print('✅ Memanggil onTerimaTugas...');
-                      await widget.onTerimaTugas();
-                      if (context.mounted) {
-                        Navigator.pop(context);
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
+                          if (kDebugMode) print('🚫 Menampilkan dialog tidak tersedia karena hasActiveTask: ${widget.hasActiveTask}');
+                          _showUnavailable(context);
+                        }
+                            : () async {
+                        if (kDebugMode) print('✅ Memanggil onTerimaTugas...');
+
+                        bool apiSuccess = await HistoryApiService.sendTaskStatusUpdate(
+                          context: context,
+                          idSuratTugas: widget.suratTugas.idSuratTugas,
+                          status: "terima",
+                          keterangan: "Menerima Surat Tugas No: ${widget.suratTugas.noSt}",
+                        );
+
+                        if (apiSuccess){
+                          if (kDebugMode) print('✅ Status "terima" berhasil dikirim ke API.');
+                          await widget.onTerimaTugas();
+                          if (context.mounted) {
+                          Navigator.pop(context);
+                          }
+                        } else {
+                          if (kDebugMode) print('⚠️ Gagal mengirim status "terima" ke API. Proses penerimaan tugas mungkin tidak dilanjutkan.');
+                        }
+                      },
+                      // sampe sini
+                      style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       backgroundColor: const Color(0xFF522E2E),
                       shape: RoundedRectangleBorder(
