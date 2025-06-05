@@ -46,7 +46,7 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
   bool _formSubmitted = false;
   bool _isSubmitting = false;
   bool _isPickingImage = false;
-  static const double MAX_ALLOWED_DISTANCE_METERS = 50000.0;
+  static const double MAX_ALLOWED_DISTANCE_METERS = 100.0;
 
   late AnimationController _searchController;
 
@@ -819,8 +819,6 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
     if (!mounted) return;
     setState(() {
       _formSubmitted = true;
-      // HAPUS ATAU KOMENTARI validasi untuk 'lokasi' karena sudah fixed
-      // _updateFieldError('lokasi', selectedLokasiId == null);
       _updateFieldError('target', selectedTarget == null);
       _updateFieldError('metode', _metodeController.text.isEmpty);
       _updateFieldError('temuan', selectedTemuan == null);
@@ -828,9 +826,7 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
       _updateFieldError('foto', _compressedPhotosForServer.isEmpty);
     });
 
-    // HAPUS ATAU KOMENTARI pengecekan selectedLokasiId dari kondisi if
     if (_formKey.currentState == null || !_formKey.currentState!.validate() ||
-        // selectedLokasiId == null || // <-- HAPUS INI
         selectedTarget == null ||
         selectedTemuan == null ||
         selectedKomoditasId == null ||
@@ -843,7 +839,6 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
       }
       return;
     }
-
     if (!_validatePayloadSize()) {
       if (mounted) {
         int totalCompressedSize = _compressedPhotosForServer.map((e) => e.length).reduce((a, b) => a + b);
@@ -870,8 +865,7 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
       _isSubmitting = true;
     });
 
-    // --- DEBUG: Print Informasi Awal Lokasi ---
-    if (kDebugMode) { // Hanya print jika dalam mode debug
+    if (kDebugMode) {
       print("--- DEBUG INFO LOKASI ---");
       if (devicePosition != null) {
         print("📍 Posisi Pengguna (Tracked): Lat=${devicePosition!.latitude}, Long=${devicePosition!.longitude}");
@@ -879,14 +873,11 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
         print("⚠️ Posisi Pengguna (Tracked): Belum ada data / Gagal mendapatkan lokasi.");
       }
     }
-    // --- Akhir DEBUG ---
-
 
     Lokasi? selectedLokasiData;
-    // Langsung ambil dari data surat tugas
     if (widget.suratTugas.lokasi.isNotEmpty) {
       selectedLokasiData = widget.suratTugas.lokasi.first;
-      if (kDebugMode && selectedLokasiData != null) { //
+      if (kDebugMode && selectedLokasiData != null) {
         print("🎯 Lokasi Penempatan ST (Fixed): Nama='${selectedLokasiData.namaLokasi}', Lat=${selectedLokasiData.latitude}, Long=${selectedLokasiData.longitude}");
       }
     } else {
@@ -914,12 +905,10 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
       userLongitude,
     );
 
-    // --- DEBUG: Print Jarak ---
     if (kDebugMode) {
       print("📏 Jarak Pengguna ke Lokasi Penempatan ST: ${distanceInMeters.toStringAsFixed(2)} meter");
       print("--- AKHIR DEBUG INFO LOKASI ---");
     }
-    // --- Akhir DEBUG ---
 
     bool isInRange = distanceInMeters <= MAX_ALLOWED_DISTANCE_METERS;
     String dialogTitle;

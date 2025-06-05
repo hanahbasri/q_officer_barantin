@@ -67,76 +67,76 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
     _initializePageAndTutorial();
   }
 
-    Future<void> _initializePageAndTutorial() async {
-      await _checkTutorialStatus();
-      await _loadHasilPemeriksaan();
+  Future<void> _initializePageAndTutorial() async {
+    await _checkTutorialStatus();
+    await _loadHasilPemeriksaan();
 
-      if (mounted) {
-        if (_hasilList.isNotEmpty) {
-          _initTutorial();
-        } else {
-          _initTutorialWithoutHasilPeriksa();
-        }
+    if (mounted) {
+      if (_hasilList.isNotEmpty) {
+        _initTutorial();
+      } else {
+        _initTutorialWithoutHasilPeriksa();
+      }
 
-        if (!_hasSeenTutorial) {
-          _showTutorial();
-        }
+      if (!_hasSeenTutorial) {
+        _showTutorial();
       }
     }
+  }
 
-    Future<void> _checkTutorialStatus() async {
-      final prefs = await SharedPreferences.getInstance();
-      if (mounted) { // Periksa mounted setelah async gap
-        setState(() {
-          _hasSeenTutorial = prefs.getBool('seen_detail_laporan_tutorial_v2') ?? false;
-        });
-      }
+  Future<void> _checkTutorialStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) { // Periksa mounted setelah async gap
+      setState(() {
+        _hasSeenTutorial = prefs.getBool('seen_detail_laporan_tutorial_v2') ?? false;
+      });
     }
+  }
 
-    Future<void> _saveTutorialStatus() async {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('seen_detail_laporan_tutorial_v2', true);
-    }
+  Future<void> _saveTutorialStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('seen_detail_laporan_tutorial_v2', true);
+  }
 
-    void _initTutorial() {
-      tutorialCoachMark = TutorialCoachMark(
-        targets: _createTargets(),
-        colorShadow: const Color(0xFF522E2E),
-        textSkip: "LEWATI",
-        textStyleSkip: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        paddingFocus: 10,
-        opacityShadow: 0.8,
-        onFinish: () {
-          debugPrint("Tutorial selesai");
-          _saveTutorialStatus();
-        },
-        onSkip: () {
-          _saveTutorialStatus();
-          return true;
-        },
-      );
-    }
+  void _initTutorial() {
+    tutorialCoachMark = TutorialCoachMark(
+      targets: _createTargets(),
+      colorShadow: const Color(0xFF522E2E),
+      textSkip: "LEWATI",
+      textStyleSkip: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+      paddingFocus: 10,
+      opacityShadow: 0.8,
+      onFinish: () {
+        debugPrint("Tutorial selesai");
+        _saveTutorialStatus();
+      },
+      onSkip: () {
+        _saveTutorialStatus();
+        return true;
+      },
+    );
+  }
 
-    void _initTutorialWithoutHasilPeriksa() {
-      tutorialCoachMark = TutorialCoachMark(
-        targets: _createTargets(hasHasilPeriksa: false),
-        colorShadow: const Color(0xFF522E2E),
-        textSkip: "LEWATI",
-        textStyleSkip: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        paddingFocus: 10,
-        opacityShadow: 0.8,
-        onFinish: () {
-          debugPrint("Tutorial selesai");
-          _saveTutorialStatus();
-        },
-        onSkip: () {
-          _saveTutorialStatus();
-          return true;
-        },
-      );
-    }
+  void _initTutorialWithoutHasilPeriksa() {
+    tutorialCoachMark = TutorialCoachMark(
+      targets: _createTargets(hasHasilPeriksa: false),
+      colorShadow: const Color(0xFF522E2E),
+      textSkip: "LEWATI",
+      textStyleSkip: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+      paddingFocus: 10,
+      opacityShadow: 0.8,
+      onFinish: () {
+        debugPrint("Tutorial selesai");
+        _saveTutorialStatus();
+      },
+      onSkip: () {
+        _saveTutorialStatus();
+        return true;
+      },
+    );
+  }
 
-    void _showTutorial() {
+  void _showTutorial() {
     if (mounted && tutorialCoachMark.targets.isNotEmpty) {
       // Periksa apakah widget masih terpasang sebelum menampilkan tutorial
       Future.delayed(Duration.zero, () {
@@ -1012,7 +1012,7 @@ Widget buildLaporanFooter({
                     side: BorderSide(color: MyApp.karantinaBrown, width: 2), // atau MyApp.karantinaBrown
                   ),
                 ),
-                // Perubahan API
+                // disini yg diubah
                 onPressed: () {
                   if (!context.mounted) return; //
                   showAnimatedSelesaikanTugasDialog( //
