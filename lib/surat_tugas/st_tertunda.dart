@@ -7,7 +7,6 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:q_officer_barantin/models/st_lengkap.dart';
 import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:q_officer_barantin/services/history_service.dart';
 
 class SuratTugasTertunda extends StatefulWidget {
   final StLengkap suratTugas;
@@ -744,33 +743,33 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                         ),
                       );
                     }
-                        // dari sini
+                    // Perubahan API
                         : widget.hasActiveTask
                         ? () {
-                          if (kDebugMode) print('🚫 Menampilkan dialog tidak tersedia karena hasActiveTask: ${widget.hasActiveTask}');
-                          _showUnavailable(context);
-                        }
-                            : () async {
-                        if (kDebugMode) print('✅ Memanggil onTerimaTugas...');
+                      if (kDebugMode) print('🚫 Menampilkan dialog tidak tersedia karena hasActiveTask: ${widget.hasActiveTask}');
+                      _showUnavailable(context);
+                    }
+                        : () async {
+                      if (kDebugMode) print('✅ Memanggil onTerimaTugas...');
 
-                        bool apiSuccess = await HistoryApiService.sendTaskStatusUpdate(
-                          context: context,
-                          idSuratTugas: widget.suratTugas.idSuratTugas,
-                          status: "terima",
-                          keterangan: "Menerima Surat Tugas No: ${widget.suratTugas.noSt}",
-                        );
+                      bool apiSuccess = await HistoryApiService.sendTaskStatusUpdate(
+                        context: context,
+                        idSuratTugas: widget.suratTugas.idSuratTugas,
+                        status: "terima",
+                        keterangan: "Menerima Surat Tugas No: ${widget.suratTugas.noSt}",
+                      );
 
-                        if (apiSuccess){
-                          if (kDebugMode) print('✅ Status "terima" berhasil dikirim ke API.');
-                          await widget.onTerimaTugas();
-                          if (context.mounted) {
+                      if (apiSuccess){
+                        if (kDebugMode) print('✅ Status "terima" berhasil dikirim ke API.');
+                        await widget.onTerimaTugas();
+                        if (context.mounted) {
                           Navigator.pop(context);
-                          }
-                        } else {
-                          if (kDebugMode) print('⚠️ Gagal mengirim status "terima" ke API. Proses penerimaan tugas mungkin tidak dilanjutkan.');
                         }
-                      },
-                      // sampe sini
+                      } else {
+                        if (kDebugMode) print('⚠️ Gagal mengirim status "terima" ke API. Proses penerimaan tugas mungkin tidak dilanjutkan.');
+                      }
+                    },
+                    // sampe sini
                       style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       backgroundColor: const Color(0xFF522E2E),

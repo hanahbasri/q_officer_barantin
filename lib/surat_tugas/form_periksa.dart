@@ -927,6 +927,7 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
     IconData dialogIcon;
     Color dialogIconColor;
 
+    // jarak posisi pengguna saat ini ke lokasi penempatan
     if (!isInRange) {
       dialogTitle = "Posisi Tidak Sesuai";
       dialogMessage =
