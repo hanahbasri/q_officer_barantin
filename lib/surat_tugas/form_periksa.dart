@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -41,7 +42,15 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
   late String idPemeriksaan;
   List<Lokasi> lokasiList = [];
   List<Komoditas> komoditasList = [];
+
+  final List<XFile> _originalPickedXFiles = [];
+
+  // Tetap digunakan untuk menampilkan foto di UI (hasil kompresi display)
+  final List<Uint8List> _uploadedPhotos = [];
+
+  // Diisi saat akan submit ke server (hasil kompresi server)
   final List<Uint8List> _compressedPhotosForServer = [];
+
   bool _formSubmitted = false;
   bool _isSubmitting = false;
   bool _isPickingImage = false;
@@ -63,9 +72,6 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
   final TextEditingController _metodeController = TextEditingController();
   final TextEditingController _catatanController = TextEditingController();
 
-  final List<Uint8List> _uploadedPhotos = [];
-  final List<XFile> _pickedXFiles = [];
-
   final Map<String, bool> _fieldErrors = {
     'lokasi': false,
     'target': false,
@@ -79,7 +85,7 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
   bool _isLoadingDropdownData = true;
   static const int _maxPhotos = 4;
   late DatabaseHelper _dbHelper;
-
+  static const int _maxTotalServerPayloadKb = 100;
 
   @override
   void initState() {
@@ -256,132 +262,153 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
     }
   }
 
-  Future<Uint8List> _compressImageOptimized(XFile imageFile) async {
+  // Fungsi kompresi untuk tampilan UI
+  Future<Uint8List?> _compressForDisplay(XFile imageFile) async {
     try {
-      if (kDebugMode) {
-        final originalBytes = await imageFile.readAsBytes();
-        print("🔧 Mulai kompresi gambar - Ukuran awal: ${originalBytes.length} bytes (${(originalBytes.length / 1024).toStringAsFixed(2)} KB)");
-      }
+      final filePath = imageFile.path;
+      final targetPath = filePath.replaceAll(
+          RegExp(r'\.\w+$'), '_display${DateTime.now().millisecondsSinceEpoch}.jpg');
 
-      const int finalTargetSize = 28 * 1024;
-      const int intermediateTargetSize = 50 * 1024;
-
-      // Kompresi tahap 1
-      Uint8List? compressedBytes = await FlutterImageCompress.compressWithFile(
-        imageFile.path,
-        minWidth: 800,
-        minHeight: 600,
-        quality: 70,
-        format: CompressFormat.jpeg,
-        keepExif: false,
-      );
-
-      if (compressedBytes == null) {
-        throw Exception("Kompresi tahap 1 gagal.");
-      }
-
-      // Kompresi tahap 2 jika masih terlalu besar
-      if (compressedBytes.length > intermediateTargetSize) {
-        if (kDebugMode) print("🔧 Ukuran > ${intermediateTargetSize / 1024}KB (${compressedBytes.length / 1024}KB), kompresi tahap 2...");
-        Uint8List? tempBytes = await FlutterImageCompress.compressWithList(
-          compressedBytes,
-          minWidth: 640,
-          minHeight: 480,
-          quality: 55, // Turunkan kualitas secara bertahap
-          format: CompressFormat.jpeg,
-        );
-        compressedBytes = tempBytes; // Gunakan hasil kompresi jika berhasil
-      }
-
-      // Kompresi tahap 3 jika masih terlalu besar
-      if (compressedBytes.length > finalTargetSize) {
-        if (kDebugMode) print("🔧 Ukuran > ${finalTargetSize / 1024}KB (${compressedBytes.length / 1024}KB), kompresi tahap 3...");
-        Uint8List? tempBytes = await FlutterImageCompress.compressWithList(
-          compressedBytes,
-          minWidth: 500,
-          minHeight: 375,
-          quality: 40, // Kualitas lebih rendah untuk mencapai target
-          format: CompressFormat.jpeg,
-        );
-        compressedBytes = tempBytes; // Gunakan hasil kompresi jika berhasil
-      }
-
-      if (compressedBytes.length > finalTargetSize + (5 * 1024)) {
-        if (kDebugMode) {
-          print("⚠️ PERINGATAN: Ukuran foto setelah kompresi (${(compressedBytes.length / 1024).toStringAsFixed(2)} KB) mungkin masih terlalu besar untuk target ${finalTargetSize/1024}KB.");
-        }
-      }
-
-      final result = compressedBytes;
-
-      if (kDebugMode) {
-        print("✅ Kompresi selesai - Ukuran akhir: ${result.length} bytes (${(result.length / 1024).toStringAsFixed(2)} KB)");
-      }
-      return result;
-
-    } catch (e) {
-      if (kDebugMode) {
-        print("❌ Error saat kompresi (_compressImageOptimized) untuk ${imageFile.name}: $e");
-      }
-      // Fallback: coba kompresi sederhana jika optimasi gagal
-      try {
-        Uint8List? fallbackBytes = await FlutterImageCompress.compressWithFile(
-          imageFile.path,
-          minWidth: 800,
-          minHeight: 600,
-          quality: 60,
-          format: CompressFormat.jpeg,
-          keepExif: false,
-        );
-        if (fallbackBytes != null) {
-          if (kDebugMode) print("⚠️ Menggunakan kompresi fallback untuk ${imageFile.name} karena error. Ukuran: ${(fallbackBytes.length / 1024).toStringAsFixed(2)} KB");
-          return fallbackBytes;
-        }
-      } catch (fe) {
-        if (kDebugMode) print("❌ Error pada kompresi fallback untuk ${imageFile.name}: $fe");
-      }
-      // Jika semua gagal, kembalikan byte asli (berpotensi besar)
-      if (kDebugMode) print("⚠️⚠️ Semua upaya kompresi gagal untuk ${imageFile.name}, mengembalikan byte asli. Ini bisa sangat besar!");
-      return await imageFile.readAsBytes();
-    }
-  }
-
-
-  Future<Map<String, dynamic>> _processImageAsync(XFile imageFile) async {
-    try {
-      final displayBytes = await FlutterImageCompress.compressWithFile(
-        imageFile.path,
-        minWidth: 800,
-        minHeight: 600,
+      final result = await FlutterImageCompress.compressAndGetFile(
+        filePath,
+        targetPath,
+        minWidth: 1024,
+        minHeight: 768,
         quality: 75,
         format: CompressFormat.jpeg,
         keepExif: false,
       );
-
-      // Kompresi untuk dikirim ke server (ukuran lebih kecil)
-      final serverBytes = await _compressImageOptimized(imageFile);
-
-      return {
-        'display': displayBytes ?? await imageFile.readAsBytes(), // Fallback jika displayBytes null
-        'compressed': serverBytes,
-        'success': true,
-      };
+      if (result == null) return null;
+      final bytes = await result.readAsBytes();
+      await File(result.path).delete(); // Hapus file sementara setelah dibaca
+      return bytes;
     } catch (e) {
       if (kDebugMode) {
-        print("❌ Error processing image ${imageFile.name}: $e");
+        print("❌ Error compressing for display for ${imageFile.name}: $e");
       }
-      // Fallback: gunakan gambar asli jika pemrosesan gagal total
-      final bytes = await imageFile.readAsBytes();
-      return {
-        'display': bytes,
-        'compressed': bytes,
-        'success': false,
-        'error': e.toString(),
-      };
+      return await imageFile.readAsBytes(); // Fallback ke original jika gagal
+    }
+  }
+
+  // Fungsi kompresi untuk server
+  Future<Uint8List> _compressForServer(XFile imageFile, double targetKbPerPhoto) async {
+    final targetBytes = targetKbPerPhoto * 1024;
+    Uint8List originalBytes;
+    try {
+      originalBytes = await imageFile.readAsBytes(); // Baca sekali di awal
+      if (kDebugMode) {
+        print("🔧 SERVER COMPRESSION for ${imageFile.name} - Original: ${(originalBytes.length / 1024).toStringAsFixed(2)}KB, Target for this photo: ${targetKbPerPhoto.toStringAsFixed(2)}KB (${targetBytes.toStringAsFixed(0)} bytes)");
+      }
+    } catch (e) {
+      if (kDebugMode) print("❌ Error reading original file for ${imageFile.name}: $e. Returning empty list.");
+      return Uint8List(0);
+    }
+
+    try {
+      int quality = 75; // Mulai dengan kualitas yang sedikit lebih tinggi
+      int minWidth = 1000; // Mulai dengan dimensi yang lebih besar
+      int minHeight = 750;
+      Uint8List? compressedBytes;
+      String? lastError;
+
+      // Upaya pertama dengan parameter awal
+      try {
+        compressedBytes = await FlutterImageCompress.compressWithFile(
+          imageFile.path,
+          minWidth: minWidth,
+          minHeight: minHeight,
+          quality: quality,
+          format: CompressFormat.jpeg,
+          keepExif: false,
+        );
+      } catch (e) {
+        lastError = e.toString();
+        if (kDebugMode) print("  SERVER COMPRESSION - Initial attempt error: $e");
+      }
+
+
+      if (compressedBytes == null) { // Jika upaya awal gagal total
+        if (kDebugMode) print("  SERVER COMPRESSION - Initial compression failed for ${imageFile.name}, trying safer params.");
+        quality = 50; minWidth = 640; minHeight = 480; // Parameter lebih aman
+        try {
+          compressedBytes = await FlutterImageCompress.compressWithFile(
+              imageFile.path, minWidth: minWidth, minHeight: minHeight, quality: quality, format: CompressFormat.jpeg, keepExif: false);
+        } catch (e) {
+          lastError = "Safer params also failed: $e";
+          if (kDebugMode) print("  SERVER COMPRESSION - Safer params also failed for ${imageFile.name}: $e");
+        }
+      }
+
+      if (compressedBytes == null) { // Jika masih gagal, kembalikan original
+        if (kDebugMode) print("❌ SERVER COMPRESSION - All attempts failed for ${imageFile.name}. Error: $lastError. Returning original.");
+        return originalBytes;
+      }
+
+
+      if (kDebugMode) print("  SERVER COMPRESSION - After Q$quality, Dim${minWidth}x$minHeight: ${(compressedBytes.length / 1024).toStringAsFixed(2)}KB");
+
+      // Iterasi untuk menurunkan kualitas/dimensi jika ukuran masih terlalu besar
+      int iteration = 0;
+      while (compressedBytes!.length > targetBytes && quality > 5 && iteration < 5) { // Batasi iterasi dan kualitas minimum
+        iteration++;
+        if (quality > 10) {
+          quality -= (quality > 30 ? 15 : 10); // Turunkan kualitas lebih agresif jika kualitas masih tinggi
+        } else {
+          quality -= 2; // Turunan kecil jika kualitas sudah rendah
+        }
+        if (quality < 5) quality = 5;
+
+        // Jika ukuran masih jauh di atas target, coba perkecil dimensi juga
+        if (compressedBytes.length > targetBytes * 1.8 && minWidth > 320) { // Jika > 180% target
+          minWidth = (minWidth * 0.75).round().clamp(320, 2000); // Clamp agar tidak terlalu kecil/besar
+          minHeight = (minHeight * 0.75).round().clamp(240, 1500);
+        } else if (compressedBytes.length > targetBytes * 1.3 && minWidth > 500) { // Jika > 130% target
+          minWidth = (minWidth * 0.85).round().clamp(320, 2000);
+          minHeight = (minHeight * 0.85).round().clamp(240, 1500);
+        }
+
+
+        if (kDebugMode) print("  SERVER COMPRESSION - Iteration $iteration: Trying Q$quality, Dim${minWidth}x$minHeight");
+        Uint8List? tempBytes;
+        try {
+          tempBytes = await FlutterImageCompress.compressWithList(
+            compressedBytes, // Kompres dari hasil sebelumnya untuk efisiensi
+            minWidth: minWidth,
+            minHeight: minHeight,
+            quality: quality,
+            format: CompressFormat.jpeg,
+          );
+        } catch (e) {
+          lastError = e.toString();
+          if (kDebugMode) print("    Error in iteration $iteration: $e. Using previous best.");
+          break; // Keluar loop jika ada error di iterasi, gunakan hasil kompresi terakhir yang berhasil
+        }
+
+        if (tempBytes.isEmpty) {
+          if (kDebugMode) print("    Iteration $iteration resulted in null/empty bytes. Using previous best.");
+          break;
+        }
+        compressedBytes = tempBytes;
+        if (kDebugMode) print("    Result: ${(compressedBytes.length / 1024).toStringAsFixed(2)}KB");
+      }
+
+      if (compressedBytes.length > targetBytes * 1.15) { // Toleransi 15% di atas target
+        if (kDebugMode) print("⚠️ SERVER COMPRESSION - Final size for ${imageFile.name} (${(compressedBytes.length / 1024).toStringAsFixed(2)}KB) is still above target ${targetKbPerPhoto.toStringAsFixed(2)}KB after $iteration iterations. Last error: $lastError");
+      } else {
+        if (kDebugMode) print("✅ SERVER COMPRESSION - Final size for ${imageFile.name}: ${(compressedBytes.length / 1024).toStringAsFixed(2)}KB after $iteration iterations.");
+      }
+      return compressedBytes;
+
+    } catch (e) {
+      if (kDebugMode) {
+        print("❌ FATAL Error in _compressForServer for ${imageFile.name}: $e. Returning original bytes as fallback.");
+      }
+      return originalBytes;
     }
   }
 
   Future<void> pickImages(BuildContext context, ImageSource source, {bool isMulti = false}) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
     if (_isPickingImage) {
       if (kDebugMode) {
         print("⚠️ Image picker sedang aktif, mengabaikan request baru");
@@ -389,10 +416,10 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
       return;
     }
 
-    int remainingSlots = _maxPhotos - _uploadedPhotos.length;
+    int remainingSlots = _maxPhotos - _originalPickedXFiles.length; // Cek berdasarkan original XFiles
     if (remainingSlots <= 0) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        scaffoldMessenger.showSnackBar(
           const SnackBar(content: Text('Batas maksimal $_maxPhotos foto sudah tercapai.')),
         );
       }
@@ -401,263 +428,167 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
 
     try {
       if (!mounted) return;
-      setState(() {
-        _isPickingImage = true;
-      });
+      setState(() { _isPickingImage = true; });
 
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) {
+        scaffoldMessenger.showSnackBar(
           const SnackBar(
-            content: Row(
-              children: [
-                SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                SizedBox(width: 16),
-                Text('Mengambil foto...'),
-              ],
+            content: Row(children: [
+              SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+              SizedBox(width: 16), Text('Mengambil foto...'),
+            ],
             ),
-            duration: Duration(seconds: 2),
+            duration: Duration(seconds: 2), // Dibuat singkat karena ada proses lanjut
           ),
         );
       }
 
       List<XFile> tempXFiles = [];
-
       if (isMulti) {
-        final List<XFile> selectedImages = await _picker.pickMultiImage(
-          imageQuality: 80,
-        ).timeout(
-          const Duration(seconds: 45),
-          onTimeout: () {
-            throw TimeoutException("Waktu memilih foto dari galeri habis.");
-          },
-        );
-
-        if (selectedImages.isEmpty && mounted) {
-          ScaffoldMessenger.of(context).clearSnackBars();
-        }
-
+        final List<XFile> selectedImages = await _picker.pickMultiImage(imageQuality: 80)
+            .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException("Waktu memilih foto dari galeri habis."));
         if (selectedImages.length > remainingSlots) {
           tempXFiles = selectedImages.sublist(0, remainingSlots);
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Hanya ${tempXFiles.length} foto pertama yang diambil karena batas maksimal.')),
-            );
-          }
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hanya ${tempXFiles.length} foto pertama yang diambil karena batas maksimal.')));
         } else {
           tempXFiles = selectedImages;
         }
-
-
       } else {
-        final XFile? singleImage = await _picker.pickImage(
-          source: source,
-          imageQuality: 80,
-          maxWidth: 1920, // Dimensi maksimal dari kamera
-          maxHeight: 1080,
-        ).timeout(
-          const Duration(seconds: 45),
-          onTimeout: () {
-            throw TimeoutException("Waktu mengambil foto dengan kamera habis.");
-          },
-        );
-
-        if (singleImage == null && mounted) {
-          ScaffoldMessenger.of(context).clearSnackBars();
-          if (!mounted) return;
-          setState(() { _isPickingImage = false; });
-          return;
-        }
+        final XFile? singleImage = await _picker.pickImage(source: source, imageQuality: 80, maxWidth: 1920, maxHeight: 1080)
+            .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException("Waktu mengambil foto dengan kamera habis."));
         if (singleImage != null) tempXFiles = [singleImage];
       }
 
       if (tempXFiles.isEmpty) {
-        if (!mounted) return;
-        setState(() { _isPickingImage = false; });
+        if (mounted) {
+          scaffoldMessenger.clearSnackBars();
+          setState(() { _isPickingImage = false; });
+        }
         return;
       }
+      if (mounted) scaffoldMessenger.clearSnackBars();
 
-
-      if (kDebugMode) {
-        print("📷 Memproses ${tempXFiles.length} foto yang dipilih");
+      // Tampilkan snackbar proses
+      if (mounted) {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Row(children: [
+              SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+              SizedBox(width: 16), Text('Memproses foto untuk tampilan...'),
+            ],
+            ),
+            duration: Duration(days: 1), // Biarkan terbuka sampai selesai atau diganti
+          ),
+        );
       }
 
       List<Uint8List> newDisplayPhotos = [];
-      List<Uint8List> newServerPhotos = [];
-      List<XFile> newXFiles = [];
+      List<XFile> successfullyProcessedOriginals = []; // Untuk melacak XFile yang berhasil diproses displaynya
       int successCount = 0;
 
       for (int i = 0; i < tempXFiles.length; i++) {
-        if ((_uploadedPhotos.length + newDisplayPhotos.length) >= _maxPhotos) {
-          if (kDebugMode) print("ℹ️ Batas maksimal foto tercapai saat iterasi, menghentikan penambahan.");
-          break;
-        }
+        if ((_originalPickedXFiles.length + successfullyProcessedOriginals.length) >= _maxPhotos) break;
 
-        final image = tempXFiles[i];
-        if (kDebugMode) print("⏳ Memproses foto: ${image.name}");
-
+        final imageXFile = tempXFiles[i];
+        if (kDebugMode) print("⏳ Memproses foto untuk DISPLAY: ${imageXFile.name}");
 
         try {
-          final result = await _processImageAsync(image);
-
-          if (result['success'] == true) {
-            newDisplayPhotos.add(result['display']);
-            newServerPhotos.add(result['compressed']);
-            newXFiles.add(image);
+          final displayBytes = await _compressForDisplay(imageXFile);
+          if (displayBytes != null) {
+            newDisplayPhotos.add(displayBytes);
+            successfullyProcessedOriginals.add(imageXFile); // Tambahkan XFile asli jika display berhasil
             successCount++;
-
-            if (kDebugMode) {
-              print("✅ Foto ${image.name} berhasil diproses:");
-              print("   - Ukuran display: ${result['display'].length} bytes");
-              print("   - Ukuran server: ${result['compressed'].length} bytes");
-            }
+            if (kDebugMode) print("✅ Foto DISPLAY ${imageXFile.name} berhasil diproses: ${displayBytes.length} bytes");
           } else {
-            if (kDebugMode) {
-              print("❌ Gagal memproses foto ${image.name}: ${result['error']}");
-            }
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Gagal memproses foto: ${image.name}. Error: ${result['error'].toString().substring(0, (result['error'].toString().length > 50) ? 50 : result['error'].toString().length)}...'),
-                  backgroundColor: Colors.orange,
-                  duration: const Duration(seconds: 3),
-                ),
-              );
-            }
+            if (kDebugMode) print("❌ Gagal memproses foto DISPLAY ${imageXFile.name}");
+            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal memproses foto (display): ${imageXFile.name}'), backgroundColor: Colors.orange, duration: const Duration(seconds: 3)));
           }
         } catch (e) {
-          if (kDebugMode) {
-            print("❌ Error berat saat memproses foto ${image.name}: $e");
-          }
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Error saat memproses ${image.name}: Coba lagi.'),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
+          if (kDebugMode) print("❌ Error berat saat memproses foto DISPLAY ${imageXFile.name}: $e");
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saat memproses ${imageXFile.name} (display): Coba lagi.'), backgroundColor: Colors.red, duration: const Duration(seconds: 3)));
         }
-        await Future.delayed(const Duration(milliseconds: 100)); // Jeda kecil
+        await Future.delayed(const Duration(milliseconds: 50)); // Jeda kecil
       }
 
       if (mounted) {
         setState(() {
-          _uploadedPhotos.addAll(newDisplayPhotos);
-          _compressedPhotosForServer.addAll(newServerPhotos);
-          _pickedXFiles.addAll(newXFiles);
-
+          _uploadedPhotos.addAll(newDisplayPhotos); // Ini untuk UI
+          _originalPickedXFiles.addAll(successfullyProcessedOriginals); // Simpan XFile asli yang berhasil
           if (_formSubmitted) {
-            _updateFieldError('foto', _uploadedPhotos.isEmpty);
+            _updateFieldError('foto', _originalPickedXFiles.isEmpty);
           }
         });
       }
 
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).clearSnackBars();
+      if (mounted) {
+        scaffoldMessenger.clearSnackBars();
         if (successCount > 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('✅ $successCount foto berhasil ditambahkan.'),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 2),
-            ),
-          );
+          scaffoldMessenger.showSnackBar(SnackBar(content: Text('✅ $successCount foto berhasil ditambahkan ke tampilan.'), backgroundColor: Colors.green, duration: const Duration(seconds: 2)));
         } else if (tempXFiles.isNotEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ Tidak ada foto yang berhasil diproses. Coba lagi dengan foto lain.'),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 3),
-            ),
-          );
+          scaffoldMessenger.showSnackBar(const SnackBar(content: Text('❌ Tidak ada foto yang berhasil diproses untuk tampilan. Coba lagi dengan foto lain.'), backgroundColor: Colors.red, duration: Duration(seconds: 3)));
         }
       }
 
-    } catch (e) { // Error utama di pickImages (misal, timeout picker, permission)
-      if (kDebugMode) {
-        print("❌ Error utama di pickImages: $e");
-      }
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).clearSnackBars();
+    } catch (e) {
+      final scaffoldMessengerOnCatch = ScaffoldMessenger.of(context);
+      if (kDebugMode) print("❌ Error utama di pickImages: $e");
+      if (mounted) {
+        scaffoldMessengerOnCatch.clearSnackBars();
         String errorMessage = 'Terjadi kesalahan tidak diketahui.';
         if (e is TimeoutException) {
           errorMessage = e.message ?? 'Waktu habis saat memilih/mengambil foto.';
         } else if (e.toString().toLowerCase().contains("permission")) {
           errorMessage = 'Izin akses galeri/kamera ditolak.';
-        }
-        else {
+        } else {
           var parts = e.toString().split(':');
           errorMessage = parts.isNotEmpty ? parts.last.trim() : e.toString();
-          if (errorMessage.length > 100) errorMessage = "${errorMessage.substring(0,97)}...";
+          if (errorMessage.length > 100) errorMessage = "${errorMessage.substring(0, 97)}...";
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Error: $errorMessage'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        scaffoldMessenger.showSnackBar(SnackBar(content: Text('❌ Error: $errorMessage'), backgroundColor: Colors.red, duration: const Duration(seconds: 4)));
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isPickingImage = false;
-        });
-      }
+      if (mounted) setState(() { _isPickingImage = false; });
     }
   }
 
   void deleteImage(int index) {
-    if (index >= 0 && index < _uploadedPhotos.length) {
+    if (index >= 0 && index < _uploadedPhotos.length && index < _originalPickedXFiles.length) {
       if (!mounted) return;
       setState(() {
         _uploadedPhotos.removeAt(index);
-        _pickedXFiles.removeAt(index);
-        if (index < _compressedPhotosForServer.length) {
-          _compressedPhotosForServer.removeAt(index);
-        }
+        _originalPickedXFiles.removeAt(index);
         if (_formSubmitted) {
-          _updateFieldError('foto', _uploadedPhotos.isEmpty);
+          _updateFieldError('foto', _originalPickedXFiles.isEmpty);
         }
       });
     }
   }
 
-  bool _validatePayloadSize() {
-    if (_compressedPhotosForServer.isEmpty) {
-      if (kDebugMode) {
-        print("⚠️ Tidak ada foto untuk divalidasi");
-      }
+  bool _validateServerPayloadSize(List<Uint8List> photosForServer) {
+    if (photosForServer.isEmpty) {
+      if (kDebugMode) print("⚠️ Tidak ada foto server untuk divalidasi");
       return true;
     }
 
-    int totalCompressedSize = 0;
-    for (var photo in _compressedPhotosForServer) {
-      totalCompressedSize += photo.length;
-    }
+    int totalCompressedServerSize = photosForServer.fold(0, (sum, photo) => sum + photo.length);
 
-    int estimatedBase64Size = (totalCompressedSize * 4 / 3).ceil();
-    int estimatedJsonOverhead = 2000 + (_compressedPhotosForServer.length * 100);
+    int estimatedBase64Size = (totalCompressedServerSize * 1.333).ceil();
+    int estimatedJsonOverhead = 2000 + (photosForServer.length * 150);
     int totalEstimatedPayload = estimatedBase64Size + estimatedJsonOverhead;
 
     if (kDebugMode) {
-      print("🔍 Validasi ukuran payload:");
-      print("   - Jumlah foto: ${_compressedPhotosForServer.length}");
-      print("   - Ukuran total compressed (binary): ${(totalCompressedSize / 1024).toStringAsFixed(2)} KB");
-      print("   - Estimasi Base64 size: ${(estimatedBase64Size / 1024).toStringAsFixed(2)} KB");
-      print("   - Estimasi payload total: ${(totalEstimatedPayload / 1024).toStringAsFixed(2)} KB");
+      print("🔍 Validasi ukuran payload SERVER:");
+      print("   - Jumlah foto server: ${photosForServer.length}");
+      print("   - Ukuran total compressed SERVER (binary): ${(totalCompressedServerSize / 1024).toStringAsFixed(2)} KB");
+      print("   - Estimasi Base64 size SERVER: ${(estimatedBase64Size / 1024).toStringAsFixed(2)} KB");
+      print("   - Estimasi payload total SERVER: ${(totalEstimatedPayload / 1024).toStringAsFixed(2)} KB");
     }
 
-    const maxPayloadSize = 100 * 1024;
-
-    if (totalEstimatedPayload > maxPayloadSize) {
-      if (kDebugMode) {
-        print("🚫 Payload terlalu besar: ${(totalEstimatedPayload / 1024).toStringAsFixed(2)} KB > ${(maxPayloadSize / 1024).toStringAsFixed(2)} KB");
-      }
+    if (totalEstimatedPayload > (_maxTotalServerPayloadKb * 1024)) {
+      if (kDebugMode) print("🚫 Payload SERVER terlalu besar: ${(totalEstimatedPayload / 1024).toStringAsFixed(2)} KB > ${_maxTotalServerPayloadKb}KB");
       return false;
     }
-    if (kDebugMode) print("✅ Ukuran payload (${(totalEstimatedPayload / 1024).toStringAsFixed(2)} KB) dalam batas.");
+    if (kDebugMode) print("✅ Ukuran payload SERVER (${(totalEstimatedPayload / 1024).toStringAsFixed(2)} KB) dalam batas.");
     return true;
   }
 
@@ -684,7 +615,7 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
       selectedKomoditasId = komoditasList.isNotEmpty ? komoditasList.first.idKomoditas : null;
 
       _uploadedPhotos.clear();
-      _pickedXFiles.clear();
+      _originalPickedXFiles.clear();
       _compressedPhotosForServer.clear();
       _formSubmitted = false;
       idPemeriksaan = uuid.v4();
@@ -693,7 +624,7 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
   }
 
   Future<void> _showCustomDialog(BuildContext context, String title, String message, IconData icon, Color iconColor) async {
-    if (!mounted) return;
+    Navigator.of(context);
     await showDialog(
       context: context,
       barrierDismissible: false,
@@ -703,7 +634,7 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
             duration: const Duration(milliseconds: 600),
             tween: Tween<double>(begin: 0.0, end: 1.0),
             curve: Curves.elasticOut,
-            builder: (context, value, child) {
+            builder: (contextDialog, value, child) {
               return Transform.scale(
                 scale: value,
                 child: Material(
@@ -804,6 +735,9 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
 
 
   void _handleSubmit(BuildContext context) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context); // Simpan
+    Navigator.of(context);
+
     if (!mounted) return;
     setState(() {
       _formSubmitted = true;
@@ -812,7 +746,7 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
       _updateFieldError('metode', _metodeController.text.isEmpty);
       _updateFieldError('temuan', selectedTemuan == null);
       _updateFieldError('komoditas', selectedKomoditasId == null);
-      _updateFieldError('foto', _compressedPhotosForServer.isEmpty);
+      _updateFieldError('foto', _originalPickedXFiles.isEmpty);
     });
 
     if (_formKey.currentState == null || !_formKey.currentState!.validate() ||
@@ -820,9 +754,9 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
         selectedTarget == null ||
         selectedTemuan == null ||
         selectedKomoditasId == null ||
-        _compressedPhotosForServer.isEmpty) {
+        _originalPickedXFiles.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        scaffoldMessenger.showSnackBar(
           const SnackBar(content: Text(
               "Harap lengkapi seluruh isian pada form pemeriksaan dan upload minimal 1 foto!")),
         );
@@ -830,26 +764,78 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
       return;
     }
 
-    if (!_validatePayloadSize()) {
-      if (mounted) {
-        // Calculate current estimated payload for the message
-        int totalCompressedSize = _compressedPhotosForServer.map((e) => e.length).reduce((a, b) => a + b);
-        int estimatedBase64Size = (totalCompressedSize * 4 / 3).ceil();
-        int estimatedJsonOverhead = 2000 + (_compressedPhotosForServer.length * 100);
-        int totalEstimatedPayload = estimatedBase64Size + estimatedJsonOverhead;
-        String currentSizeKB = (totalEstimatedPayload / 1024).toStringAsFixed(0);
-        String maxSizeKB = (100 * 1024 / 1024).toStringAsFixed(0);
+    _compressedPhotosForServer.clear();
+    double initialTargetKbPerPhoto = (_maxTotalServerPayloadKb - 8) / _originalPickedXFiles.length; // Misal, kurangi 8KB untuk JSON
+    if (initialTargetKbPerPhoto < 5) initialTargetKbPerPhoto = 5;
 
+    if (kDebugMode) {
+      print("📸 Initial target per photo for server: ${initialTargetKbPerPhoto.toStringAsFixed(2)}KB");
+    }
 
-        await _showCustomDialog(
-          context,
-          "Foto Terlalu Besar",
-          "Total ukuran foto melebihi batas maksimal (${maxSizeKB}KB). Harap kurangi jumlah foto atau gunakan foto dengan resolusi/kualitas lebih rendah. Saat ini sekitar: ${currentSizeKB}KB.",
-          Icons.photo_size_select_actual_outlined,
-          Colors.orange.shade700,
-        );
+    for (int i = 0; i < _originalPickedXFiles.length; i++) {
+      final xFile = _originalPickedXFiles[i];
+      final serverBytes = await _compressForServer(xFile, initialTargetKbPerPhoto);
+      _compressedPhotosForServer.add(serverBytes);
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
+
+    int recompressAttempts = 0;
+    final int maxRecompressAttempts = 2;
+
+    while (!_validateServerPayloadSize(_compressedPhotosForServer) && recompressAttempts < maxRecompressAttempts) {
+      recompressAttempts++;
+      if (kDebugMode) {
+        int currentTotalSize = _compressedPhotosForServer.fold(0, (sum, item) => sum + item.length);
+        print("⚠️ Payload SERVER masih terlalu besar (${(currentTotalSize / 1024).toStringAsFixed(2)}KB). Percobaan re-kompresi ke-$recompressAttempts...");
       }
-      return;
+
+      int currentTotalBytes = _compressedPhotosForServer.fold(0, (sum, photo) => sum + photo.length);
+      double overshootFactor = (_maxTotalServerPayloadKb * 1024 * 0.95) / currentTotalBytes; // Target 95% dari maks untuk aman
+
+      // Target per foto baru, dikalikan dengan faktor overshoot (jika overshoot < 1, akan memperkecil)
+      // dan pastikan tidak terlalu kecil.
+      double newAggressiveTargetKb = initialTargetKbPerPhoto * (overshootFactor < 1.0 ? overshootFactor : 0.85);
+      if (newAggressiveTargetKb < 3) newAggressiveTargetKb = 3; // Minimal absolut 3KB per foto
+
+      if (kDebugMode) {
+        print("   Re-kompresi dengan target baru per foto: ${newAggressiveTargetKb.toStringAsFixed(2)}KB");
+      }
+
+      List<Uint8List> tempCompressedForServer = [];
+      for (final xFile in _originalPickedXFiles) {
+        final serverBytes = await _compressForServer(xFile, newAggressiveTargetKb);
+        tempCompressedForServer.add(serverBytes);
+        await Future.delayed(const Duration(milliseconds: 30));
+      }
+      _compressedPhotosForServer.clear();
+      _compressedPhotosForServer.addAll(tempCompressedForServer);
+    }
+
+    if (!_validateServerPayloadSize(_compressedPhotosForServer)) {
+      if (mounted) {
+        setState(() { _isSubmitting = false; });
+        int totalSize = _compressedPhotosForServer.fold(0, (sum, item) => sum + item.length);
+        String currentSizeKB = (totalSize / 1024).toStringAsFixed(0);
+
+        // Jika setelah usaha maksimal masih terlalu besar, kita tetap kirim tapi beri log atau warning internal.
+        // User meminta untuk tidak diblokir.
+        if (kDebugMode) {
+          print("🔥 PERINGATAN FINAL: Ukuran total foto (${currentSizeKB}KB) masih melebihi batas (${_maxTotalServerPayloadKb}KB) setelah $maxRecompressAttempts percobaan re-kompresi. Akan tetap mencoba mengirim.");
+        }
+        // Untuk production, mungkin kamu mau log ini ke server analytics-mu.
+        // Untuk sekarang, kita akan lanjutkan pengiriman.
+        // Jika kamu ingin tetap ada dialog error jika GAGAL TOTAL mencapai batas, uncomment bagian _showCustomDialog di bawah
+        // dan mungkin tambahkan return;
+        // await _showCustomDialog(
+        //   context,
+        //   "Foto Masih Terlalu Besar",
+        //   "Ukuran total foto (${currentSizeKB}KB) masih melebihi batas maksimal (${_maxTotalServerPayloadKb}KB) meskipun sudah dicoba dikompres ulang. Pengiriman mungkin gagal atau data foto tidak lengkap.",
+        //   Icons.warning_amber_rounded,
+        //   Colors.red.shade700,
+        // );
+        // return; // Hapus ini jika ingin tetap mengirim
+      }
+      // return; // Hapus ini jika ingin tetap mengirim meskipun validasi akhir gagal
     }
 
     if (!mounted) return;
@@ -865,15 +851,11 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
     }
 
     if (userNip.isEmpty) {
-      if (!mounted) return;
-      setState(() {
-        _isSubmitting = false;
-      });
       if (mounted) {
-        await _showCustomDialog(
-          context,
-          "Error Autentikasi",
-          "NIP pengguna tidak ditemukan. Silakan login ulang.",
+        setState(() {
+          _isSubmitting = false;
+        });
+        await _showCustomDialog(this.context, "Error Autentikasi", "NIP pengguna tidak ditemukan. Silakan login ulang.",
           Icons.error_outline_rounded,
           Colors.red.shade700,
         );
@@ -931,9 +913,20 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
         syncedHasil['syncdata'] = 1; // Tandai sudah sinkron
         await _dbHelper.insert('Hasil_Pemeriksaan', syncedHasil);
 
-        for (var photoBytes in _uploadedPhotos) { // Simpan foto display (UI version) ke DB
-          await _dbHelper.getImagetoDatabase(photoBytes, idPemeriksaan);
+        if (_uploadedPhotos.length == _compressedPhotosForServer.length) {
+          for (int i = 0; i < _uploadedPhotos.length; i++) {
+            await _dbHelper.savePemeriksaanFoto(
+                idPemeriksaan: idPemeriksaan,
+                fotoDisplayBytes: _uploadedPhotos[i],
+                fotoServerBytes: _compressedPhotosForServer[i]
+            );
+          }
+        } else {
+          if (kDebugMode) {
+            print("❌ Error di FormPeriksa (if success): Jumlah foto display dan server tidak cocok.");
+          }
         }
+
         await _dbHelper.updateStatusTugas(widget.idSuratTugas, 'dikirim');
         _resetForm();
 
@@ -952,8 +945,18 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
         final unsyncedHasil = hasil.toMap(); // syncData default 0
         await _dbHelper.insert('Hasil_Pemeriksaan', unsyncedHasil);
 
-        for (var photoBytes in _uploadedPhotos) { // Simpan foto display
-          await _dbHelper.getImagetoDatabase(photoBytes, idPemeriksaan);
+        if (_uploadedPhotos.length == _compressedPhotosForServer.length) {
+          for (int i = 0; i < _uploadedPhotos.length; i++) {
+            await _dbHelper.savePemeriksaanFoto(
+                idPemeriksaan: idPemeriksaan,
+                fotoDisplayBytes: _uploadedPhotos[i],
+                fotoServerBytes: _compressedPhotosForServer[i]
+            );
+          }
+        } else {
+          if (kDebugMode) {
+            print("❌ Error di FormPeriksa (else gagal kirim online): Jumlah foto display dan server tidak cocok.");
+          }
         }
 
         _resetForm();
@@ -977,9 +980,20 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
       final unsyncedHasil = hasil.toMap(); // syncData default 0
       await _dbHelper.insert('Hasil_Pemeriksaan', unsyncedHasil);
 
-      for (var photoBytes in _uploadedPhotos) {
-        await _dbHelper.getImagetoDatabase(photoBytes, idPemeriksaan);
+      if (_uploadedPhotos.length == _compressedPhotosForServer.length) {
+        for (int i = 0; i < _uploadedPhotos.length; i++) {
+          await _dbHelper.savePemeriksaanFoto(
+              idPemeriksaan: idPemeriksaan,
+              fotoDisplayBytes: _uploadedPhotos[i],
+              fotoServerBytes: _compressedPhotosForServer[i]
+          );
+        }
+      } else {
+        if (kDebugMode) {
+          print("❌ Error di FormPeriksa (offline): Jumlah foto display dan server tidak cocok.");
+        }
       }
+
       await _dbHelper.updateStatusTugas(widget.idSuratTugas, 'tersimpan_offline');
       _resetForm();
 
@@ -996,10 +1010,8 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
     }
   }
 
-
   void _showImagePicker(BuildContext context) {
     if (!mounted) return;
-    // Cek batasan foto sebelum menampilkan pilihan
     if (_uploadedPhotos.length >= _maxPhotos) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

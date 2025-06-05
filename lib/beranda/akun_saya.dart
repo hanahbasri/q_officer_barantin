@@ -26,10 +26,14 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     authProvider.loadPhotoFromDB().then((_) {
-      if (authProvider.userPhotoPath != null) {
-        setState(() {
-          _imageFile = File(authProvider.userPhotoPath!);
-        });
+      if (!mounted) return;
+      if (authProvider.userPhotoPath != null && authProvider.userPhotoPath!.isNotEmpty) {
+        final file = File(authProvider.userPhotoPath!);
+        if (file.existsSync()) {
+          setState(() {
+            _imageFile = file;
+          });
+        }
       }
     });
   }
@@ -42,6 +46,7 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
   }
 
   void _onScroll() {
+    if (!mounted) return;
     if (_scrollController.offset > 220 && !_showAppBar) {
       setState(() => _showAppBar = true);
     } else if (_scrollController.offset <= 220 && _showAppBar) {
@@ -50,6 +55,7 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
   }
 
   Future<void> _pickImage(ImageSource source) async {
+    if (!mounted) return;
     try {
       final pickedFile = await _picker.pickImage(
         source: source,
@@ -58,11 +64,13 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
         imageQuality: 85,
       );
       if (pickedFile != null) {
+        if (!mounted) return;
         setState(() => _imageFile = File(pickedFile.path));
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
         await authProvider.savePhotoToDB(pickedFile.path);
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: ${e.toString()}')),
       );
@@ -70,6 +78,7 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
   }
 
   void _showImageSourceActionSheet() {
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -91,6 +100,7 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
                     icon: Icons.photo_library,
                     label: 'Galeri',
                     onTap: () {
+                      if (!mounted) return;
                       Navigator.pop(context);
                       _pickImage(ImageSource.gallery);
                     },
@@ -99,6 +109,7 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
                     icon: Icons.camera_alt,
                     label: 'Kamera',
                     onTap: () {
+                      if (!mounted) return;
                       Navigator.pop(context);
                       _pickImage(ImageSource.camera);
                     },
@@ -106,15 +117,20 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
                 ],
               ),
               if (_imageFile != null)
-                TextButton(
-                  onPressed: () async {
-                    setState(() => _imageFile = null);
-                    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-                    await authProvider.savePhotoToDB('');
-                    Navigator.pop(context);
-                  },
-                  child: const Text('Hapus Foto',
-                      style: TextStyle(color: Colors.red)),
+                Padding(
+                  padding: const EdgeInsets.only(top: 16.0),
+                  child: TextButton(
+                    onPressed: () async {
+                      if (!mounted) return;
+                      setState(() => _imageFile = null);
+                      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                      await authProvider.savePhotoToDB('');
+                      if (!mounted) return;
+                      Navigator.pop(context);
+                    },
+                    child: const Text('Hapus Foto',
+                        style: TextStyle(color: Colors.red)),
+                  ),
                 ),
             ],
           ),
@@ -123,8 +139,16 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
     );
   }
 
-  void _copyToClipboard(String text) {
+  void _copyToClipboard(String text, String fieldName) {
+    if (!mounted) return;
     Clipboard.setData(ClipboardData(text: text)).then((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$fieldName berhasil disalin'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
     });
   }
 
@@ -135,19 +159,24 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
   }) {
     return InkWell(
       onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.brown.withAlpha(26),
-              shape: BoxShape.circle,
+      borderRadius: BorderRadius.circular(12.0),
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.brown.withAlpha(26),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: MyApp.karantinaBrown, size: 32),
             ),
-            child: Icon(icon, color: MyApp.karantinaBrown, size: 32),
-          ),
-          const SizedBox(height: 8),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
-        ],
+            const SizedBox(height: 8),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
+          ],
+        ),
       ),
     );
   }
@@ -157,7 +186,6 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
     required String title,
     required String value,
     required Color iconColor,
-    required VoidCallback onTap,
   }) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -173,43 +201,57 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
           ),
         ],
       ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: ListTile(
-          contentPadding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          leading: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: iconColor.withAlpha(26),
-              borderRadius: BorderRadius.circular(10),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _copyToClipboard(value, title),
+          borderRadius: BorderRadius.circular(16),
+          child: ListTile(
+            contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: iconColor.withAlpha(26),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: iconColor, size: 20),
             ),
-            child: Icon(icon, color: iconColor, size: 20),
-          ),
-          title: Text(title,
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
-          subtitle: Text(value,
+            title: Text(title,
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+            // MODIFIED: Removed overflow property to allow text wrapping
+            subtitle: Text(
+              value.isEmpty ? "-" : value,
               style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
                   color: Colors.black87),
-              overflow: TextOverflow.ellipsis),
-          trailing: const Icon(Icons.content_copy, size: 18, color: Colors.grey),
+              // overflow: TextOverflow.ellipsis, // REMOVED
+            ),
+            // END OF MODIFIED
+            trailing: const Icon(Icons.content_copy, size: 18, color: Colors.grey),
+          ),
         ),
       ),
     );
   }
 
   Widget _buildProfileHeader(
-      String namaLengkap, String nip, String email, BuildContext context) {
+      String namaLengkap, String nip, String? uptName, BuildContext context) {
+    // MODIFIED: Removed email parameter
     return Container(
       width: double.infinity,
       padding: EdgeInsets.only(
         top: MediaQuery.of(context).padding.top + 35,
         bottom: 32,
       ),
-      color: MyApp.karantinaBrown,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [MyApp.karantinaBrown, const Color(0xFF6D4C41)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
       child: Column(
         children: [
           Stack(
@@ -221,16 +263,16 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 3),
                 ),
-                child: _imageFile != null
-                    ? CircleAvatar(
-                  radius: 48,
-                  backgroundImage: FileImage(_imageFile!),
-                )
-                    : const CircleAvatar(
+                child: CircleAvatar(
                   radius: 48,
                   backgroundColor: Colors.white,
-                  child: Icon(Icons.person,
-                      size: 52, color: MyApp.karantinaBrown),
+                  backgroundImage: _imageFile != null && _imageFile!.existsSync()
+                      ? FileImage(_imageFile!)
+                      : null,
+                  child: _imageFile == null || !_imageFile!.existsSync()
+                      ? const Icon(Icons.person,
+                      size: 52, color: MyApp.karantinaBrown)
+                      : null,
                 ),
               ),
               GestureDetector(
@@ -255,41 +297,41 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
             ],
           ),
           const SizedBox(height: 12),
-          Text(namaLengkap,
+          Text(namaLengkap.isEmpty ? "Nama Pengguna" : namaLengkap,
               style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: Colors.white)),
           const SizedBox(height: 4),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.white.withAlpha(51),
-              borderRadius: BorderRadius.circular(20),
+          if (nip.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withAlpha(51),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text('NIP: $nip',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 13)),
             ),
-            child: Text('NIP: $nip',
+          if (uptName != null && uptName.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                uptName,
+                textAlign: TextAlign.center,
                 style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w500,
-                    fontSize: 13)),
-          ),
-          const SizedBox(height: 4),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.email_outlined,
-                    color: Colors.white70, size: 14),
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(email,
-                      style: const TextStyle(color: Colors.white70, fontSize: 12),
-                      overflow: TextOverflow.ellipsis),
-                ),
-              ],
+                    fontSize: 12),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -298,9 +340,10 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
-    final namaLengkap = authProvider.userFullName ?? 'Nama tidak tersedia';
-    final nip = authProvider.userNip ?? 'NIP tidak tersedia';
-    final email = authProvider.userEmail ?? 'Email tidak tersedia';
+    final namaLengkap = authProvider.userFullName ?? '';
+    final nip = authProvider.userNip ?? '';
+    final email = authProvider.userEmail; // Can be null
+    final uptName = authProvider.userUptName; // Can be null
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -311,53 +354,66 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
         elevation: _showAppBar ? 4 : 0,
         iconTheme: const IconThemeData(color: Colors.white),
         title: _showAppBar
-            ? Text(namaLengkap,
+            ? Text(namaLengkap.isEmpty ? "Profil Saya" : namaLengkap,
             style: const TextStyle(color: Colors.white, fontSize: 16))
             : null,
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          return ListView(
-            controller: _scrollController,
-            padding: EdgeInsets.zero,
-            children: [
-              _buildProfileHeader(namaLengkap, nip, email, context),
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: constraints.maxHeight -
-                      (MediaQuery.of(context).padding.top + 280),
-                ),
-                child: Container(
-                  color: Colors.white,
-                  padding: const EdgeInsets.only(top: 24, bottom: 24),
-                  child: Column(
-                    children: [
-                      _buildCopyableInfoCard(
-                        icon: Icons.person_outline,
-                        title: 'Nama Lengkap',
-                        value: namaLengkap,
-                        iconColor: Colors.blue,
-                        onTap: () => _copyToClipboard(namaLengkap),
-                      ),
-                      _buildCopyableInfoCard(
-                        icon: Icons.badge_outlined,
-                        title: 'NIP',
-                        value: nip,
-                        iconColor: Colors.orange,
-                        onTap: () => _copyToClipboard(nip),
-                      ),
-                      _buildCopyableInfoCard(
-                        icon: Icons.email_outlined,
-                        title: 'Email',
-                        value: email,
-                        iconColor: Colors.green,
-                        onTap: () => _copyToClipboard(email),
-                      ),
-                    ],
+          return RefreshIndicator(
+            onRefresh: () async {
+              await authProvider.checkLoginStatus();
+              if(mounted){
+                setState(() {});
+              }
+            },
+            child: ListView(
+              controller: _scrollController,
+              padding: EdgeInsets.zero,
+              children: [
+                _buildProfileHeader(namaLengkap, nip, uptName, context),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight -
+                        (MediaQuery.of(context).padding.top + 280),
+                  ),
+                  child: Container(
+                    color: Colors.white, // Original background color
+                    padding: const EdgeInsets.only(top: 24, bottom: 24),
+                    child: Column(
+                      children: [
+                        _buildCopyableInfoCard(
+                          icon: Icons.person_outline,
+                          title: 'Nama Lengkap',
+                          value: namaLengkap,
+                          iconColor: Colors.blue,
+                        ),
+                        _buildCopyableInfoCard(
+                          icon: Icons.badge_outlined,
+                          title: 'NIP',
+                          value: nip,
+                          iconColor: Colors.orange,
+                        ),
+                        if (uptName != null && uptName.isNotEmpty)
+                          _buildCopyableInfoCard(
+                            icon: Icons.business_outlined,
+                            title: 'Unit Pelaksana Teknis (UPT)',
+                            value: uptName,
+                            iconColor: Colors.brown,
+                          ),
+                        if (email != null && email.isNotEmpty)
+                          _buildCopyableInfoCard(
+                            icon: Icons.email_outlined,
+                            title: 'Email',
+                            value: email,
+                            iconColor: Colors.green,
+                          ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           );
         },
       ),

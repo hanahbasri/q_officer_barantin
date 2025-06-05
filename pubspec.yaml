@@ -44,7 +44,8 @@ dependencies:
   flutter_animate: ^4.2.0
   tutorial_coach_mark: ^1.2.9
   smooth_page_indicator: ^1.1.0
-  flutter_image_compress: ^2.0.0
+  flutter_image_compress: ^2.4.0
+  html: ^0.15.6
 
 
 
@@ -69,6 +70,7 @@ flutter:
     - images/pk_icon.png
     - images/not_found.png
     - images/logo_apk.png
+    - dataUPT/master_upt.htm
 
 fonts:
   - family: Inter

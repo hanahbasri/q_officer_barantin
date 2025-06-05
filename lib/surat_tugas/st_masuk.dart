@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher_string.dart';
+import '../main.dart';
+import '../services/history_service.dart';
 import 'periksa_lokasi.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:q_officer_barantin/models/st_lengkap.dart';
@@ -734,7 +736,6 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                     key: terimaTugasKey,
                     onPressed: widget.showTutorialImmediately
                         ? () {
-                      // Untuk tutorial, tampilkan pesan
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('Ini adalah mode tutorial - tombol tidak aktif'),
@@ -749,9 +750,64 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                     }
                         : () async {
                       if (kDebugMode) print('✅ Memanggil onTerimaTugas...');
-                      await widget.onTerimaTugas();
-                      if (context.mounted) {
-                        Navigator.pop(context);
+
+                      // Tampilkan dialog loading
+                      showDialog(
+                        context: context,
+                        barrierDismissible: false,
+                        builder: (BuildContext dialogContext) {
+                          return Dialog(
+                            backgroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            child: Padding(
+                              padding: const EdgeInsets.all(20.0),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircularProgressIndicator(
+                                    valueColor: AlwaysStoppedAnimation<Color>(MyApp.karantinaBrown),
+                                  ),
+                                  const SizedBox(width: 20),
+                                  const Text("Memproses penerimaan...", style: TextStyle(fontSize: 16)),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+
+                      bool apiSuccess = false;
+                      try {
+                        // Kirim status "terima" ke API
+                        apiSuccess = await HistoryApiService.sendTaskStatusUpdate(
+                          context: context, // Menggunakan context dari widget build
+                          idSuratTugas: widget.suratTugas.idSuratTugas,
+                          status: "terima", // Status untuk API
+                          keterangan: "Petugas telah menerima surat tugas.",
+                        );
+                      } catch (e) {
+                        if (kDebugMode) {
+                          print('Error saat mengirim status "terima" ke API: $e');
+                        }
+                        // apiSuccess akan tetap false
+                      }
+
+                      // Tutup dialog loading
+                      if (mounted) Navigator.pop(context); // Menutup dialog loading
+
+                      if (apiSuccess) {
+                        // Lanjutkan dengan logika yang sudah ada jika API berhasil
+                        await widget.onTerimaTugas(); // Ini akan memanggil _terimaTugas di SuratTugasPage
+                      } else {
+                        // Jika API gagal, tampilkan pesan error
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Gagal mengirim status penerimaan tugas ke server. Silakan coba lagi nanti.'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
                       }
                     },
                     style: ElevatedButton.styleFrom(

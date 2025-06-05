@@ -1,7 +1,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"> <!-- Tambahkan namespace tools di sini -->
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Permissions -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- Jika menargetkan API 29+ dan tidak menggunakan requestLegacyExternalStorage, WRITE_EXTERNAL_STORAGE
+         biasanya tidak diperlukan untuk image_picker karena file disimpan di direktori spesifik aplikasi
+         atau di MediaStore yang dikelola sistem. Namun, jika ada kasus khusus atau plugin versi lama,
+         bisa ditambahkan dengan maxSdkVersion="28". -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -12,24 +23,17 @@
     <application
         android:label="Q-Officer"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
-
-        <!-- Default icon untuk notifikasi -->
-        <meta-data
-            android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@drawable/logo_barantin" />
+        android:icon="@mipmap/ic_launcher"
+        tools:ignore="GoogleAppIndexingWarning"> <meta-data
+        android:name="com.google.firebase.messaging.default_notification_icon"
+        android:resource="@drawable/logo_barantin" />
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyBXR4dJ5G4rxG3wt_DfRpQmbNtD03YBD60" />
-        <!--
-        ✅ Perbaikan konflik android:exported -->
-        <service
+            android:value="AIzaSyBXR4dJ5G4rxG3wt_DfRpQmbNtD03YBD60" /> <service
             android:name="com.google.firebase.messaging.FirebaseMessagingService"
-            android:exported="true"
-            tools:replace="android:exported">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT"/>
-            </intent-filter>
+            android:exported="false" tools:replace="android:exported"> <intent-filter>
+            <action android:name="com.google.firebase.MESSAGING_EVENT"/>
+        </intent-filter>
         </service>
 
         <activity
@@ -52,16 +56,36 @@
             </intent-filter>
         </activity>
 
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.flutter_image_picker_file_provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/flutter_image_picker_file_paths" />
+        </provider>
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
 
-    <!-- Allow external apps to send text -->
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.GET_CONTENT" />
+            <data android:mimeType="image/*" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.PICK" />
+            <data android:mimeType="image/*" />
         </intent>
     </queries>
 </manifest>

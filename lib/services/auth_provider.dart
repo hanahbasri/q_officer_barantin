@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle; // Untuk rootBundle
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -6,6 +7,8 @@ import 'dart:io';
 import 'package:q_officer_barantin/models/role_detail.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:q_officer_barantin/databases/db_helper.dart';
+import 'package:html/parser.dart' show parse; // Untuk parsing HTML
+import 'package:html/dom.dart' as dom; // Untuk DOM HTML
 
 class AuthKeys {
   static const authToken = "auth_token";
@@ -37,11 +40,56 @@ class AuthProvider with ChangeNotifier {
   String? nik;
   String? idPegawai;
   String? upt;
+  String? userUptName;
 
   String? _userPhotoPath;
   String? get userPhotoPath => _userPhotoPath;
 
   bool get isLoggedIn => _isLoggedIn;
+  static Map<String, String> _uptDataMap = {};
+
+  Future<void> _loadAndParseUptData() async {
+    if (_uptDataMap.isNotEmpty) {
+      return;
+    }
+    try {
+      final String htmlString = await rootBundle.loadString('dataUPT/master_upt.htm');
+      var document = parse(htmlString);
+      var table = document.querySelector('table');
+
+      if (table != null) {
+        var rows = table.querySelectorAll('tr');
+
+        for (var i = 1; i < rows.length; i++) {
+          var cells = rows[i].querySelectorAll('td');
+          if (cells.length >= 4) {
+            String uptId = cells[0].text.trim();
+            String uptNamaResmi = cells[3].text.trim();
+            _uptDataMap[uptId] = uptNamaResmi;
+          }
+        }
+        debugPrint("✅ Data UPT berhasil dimuat dan diparsing. Total: ${_uptDataMap.length} UPT.");
+      }
+    } catch (e) {
+      debugPrint("❌ Error saat memuat atau parsing data UPT: $e");
+    }
+  }
+
+  Future<void> _resolveUserUptName() async {
+    if (upt != null && upt!.isNotEmpty) {
+      if (_uptDataMap.isEmpty) {
+        await _loadAndParseUptData();
+      }
+      userUptName = _uptDataMap[upt];
+      if (userUptName == null) {
+        debugPrint("⚠️ Nama UPT untuk kode '$upt' tidak ditemukan di master_upt.htm.");
+      } else {
+        debugPrint("ℹ️ Nama UPT untuk kode '$upt' ditemukan: $userUptName");
+      }
+    } else {
+      userUptName = null;
+    }
+  }
 
   /// ✅ Cek status login dari local storage
   Future<void> checkLoginStatus() async {
@@ -61,6 +109,8 @@ class AuthProvider with ChangeNotifier {
         nik = await _secureStorage.read(key: AuthKeys.nik);
         idPegawai = await _secureStorage.read(key: AuthKeys.idPegawai);
         upt = await _secureStorage.read(key: AuthKeys.upt);
+
+        await _resolveUserUptName();
 
         final detilJson = await _secureStorage.read(key: AuthKeys.userRoles);
         if (detilJson != null) {
@@ -113,6 +163,8 @@ class AuthProvider with ChangeNotifier {
           nik = userData["nik"];
           idPegawai = userData["idpegawai"];
           upt = userData["upt"]?.toString();
+
+          await _resolveUserUptName();
 
           final detilList = userData["detil"];
 
@@ -261,6 +313,7 @@ class AuthProvider with ChangeNotifier {
       nik = null;
       idPegawai = null;
       upt = null;
+      userUptName = null;
 
       if (lastPhoto != null) {
         await _secureStorage.write(key: AuthKeys.userPhotoPath, value: lastPhoto);

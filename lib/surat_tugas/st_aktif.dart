@@ -745,7 +745,9 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                       );
 
                       if (result == true) {
-                        Navigator.pop(context, true);
+                        if (mounted) {
+                          Navigator.pop(context, true);
+                        }
                       }
                     },
                     style: ElevatedButton.styleFrom(

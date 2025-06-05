@@ -16,7 +16,7 @@ class SuratTugasService {
   static const String authHeader = 'Basic bXJpZHdhbjpaPnV5JCx+NjR7KF42WDQm';
 
   // FIXED: Sinkronisasi dengan batas ukuran di FormPeriksa (100KB)
-  static const int MAX_PAYLOAD_SIZE_BYTES = 100 * 1024; // 100KB - sama dengan FormPeriksa
+  static const int MAX_PAYLOAD_SIZE_BYTES = 100 * 1024; // 100KB
 
   static Future<StLengkap?> getSuratTugasByNip(String nip) async {
     try {

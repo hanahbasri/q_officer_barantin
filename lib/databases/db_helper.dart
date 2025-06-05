@@ -22,11 +22,11 @@ class DatabaseHelper {
   }
 
   Future<Database> _initDatabase() async {
-    String path = join(await getDatabasesPath(), 'app_database.db');
+    String path = join(await getDatabasesPath(), 'q-officer.db');
 
     return await openDatabase(
       path,
-      version: 4,
+      version: 5, // Pastikan versi database sesuai dengan skema terakhir
       onCreate: (db, version) async {
         await _createTables(db);
       },
@@ -34,20 +34,27 @@ class DatabaseHelper {
         if (kDebugMode) {
           print('Upgrading database from $oldVersion to $newVersion');
         }
-        if (oldVersion < 2) {
-          await db.execute('DROP TABLE IF EXISTS Dokumentasi_Periksa');
-          await db.execute('DROP TABLE IF EXISTS Hasil_Pemeriksaan');
-          await db.execute('DROP TABLE IF EXISTS Komoditas');
-          await db.execute('DROP TABLE IF EXISTS Lokasi');
-          await db.execute('DROP TABLE IF EXISTS Petugas');
-          await db.execute('DROP TABLE IF EXISTS Surat_Tugas');
-          await _createTables(db);
-        }
-        if (oldVersion < 3) {
-        }
+        // Penanganan upgrade skema jika diperlukan
         if (oldVersion < 4) {
-          // Migrasi ke versi 4: Tambahkan tabel Master_Target_Temuan
+          // Jika upgrade dari versi sebelum ada Master_Target_Temuan
           await _createMasterTargetTemuanTable(db);
+        }
+        if (oldVersion < 5) {
+          // Upgrade untuk tabel Dokumentasi_Periksa dari versi < 5
+          await db.execute('DROP TABLE IF EXISTS Dokumentasi_Periksa');
+          await db.execute('''
+          CREATE TABLE Dokumentasi_Periksa (
+            id_foto TEXT NOT NULL PRIMARY KEY,
+            id_pemeriksaan TEXT NOT NULL,
+            foto_display TEXT NOT NULL, 
+            foto_server TEXT NOT NULL,  
+            FOREIGN KEY (id_pemeriksaan) REFERENCES Hasil_Pemeriksaan(id_pemeriksaan) ON DELETE CASCADE
+          )
+        ''');
+          if (kDebugMode) {
+            print(
+                'Tabel Dokumentasi_Periksa telah diupgrade ke skema baru (v5)');
+          }
         }
       },
     );
@@ -128,9 +135,9 @@ class DatabaseHelper {
         catatan TEXT,
         tgl_periksa TEXT NOT NULL,
         syncdata INTEGER NOT NULL DEFAULT 0,
-        FOREIGN KEY (id_surat_tugas) REFERENCES Surat_Tugas(id_surat_tugas),
-        FOREIGN KEY (id_lokasi) REFERENCES Lokasi(id_lokasi),
-        FOREIGN KEY (id_komoditas) REFERENCES Komoditas(id_komoditas)
+        FOREIGN KEY (id_surat_tugas) REFERENCES Surat_Tugas(id_surat_tugas) ON DELETE CASCADE,
+        FOREIGN KEY (id_lokasi) REFERENCES Lokasi(id_lokasi) ON DELETE CASCADE,
+        FOREIGN KEY (id_komoditas) REFERENCES Komoditas(id_komoditas) ON DELETE CASCADE
       )
     ''');
 
@@ -138,27 +145,43 @@ class DatabaseHelper {
       CREATE TABLE Dokumentasi_Periksa (
         id_foto TEXT NOT NULL PRIMARY KEY,
         id_pemeriksaan TEXT NOT NULL,
-        foto TEXT NOT NULL,
-        FOREIGN KEY (id_pemeriksaan) REFERENCES Hasil_Pemeriksaan(id_pemeriksaan)
+        foto_display TEXT NOT NULL, -- Base64 dari _uploadedPhotos (untuk UI)
+        foto_server TEXT NOT NULL,  -- Base64 dari _compressedPhotosForServer (untuk API)
+        FOREIGN KEY (id_pemeriksaan) REFERENCES Hasil_Pemeriksaan(id_pemeriksaan) ON DELETE CASCADE
       );
     ''');
 
     await _createMasterTargetTemuanTable(db);
   }
 
-    // Fungsi terpisah untuk membuat tabel Master_Target_Temuan
-    Future<void> _createMasterTargetTemuanTable(Database db) async {
-      await db.execute('''
-      CREATE TABLE Master_Target_Temuan (
-        jenis_karantina TEXT NOT NULL PRIMARY KEY,
-        uraian_list_json TEXT NOT NULL,
-        last_sync_timestamp TEXT NOT NULL
-      )
-    ''');
-      if (kDebugMode) {
-        print('✅ Table Master_Target_Temuan created/ensured.');
-      }
+  Future<void> savePemeriksaanFoto({
+    required String idPemeriksaan,
+    required Uint8List fotoDisplayBytes,
+    required Uint8List fotoServerBytes,
+  }) async {
+    final db = await database;
+    final String base64FotoDisplay = base64Encode(fotoDisplayBytes);
+    final String base64FotoServer = base64Encode(fotoServerBytes);
+    await db.insert('Dokumentasi_Periksa', {
+      'id_foto': const Uuid().v4(),
+      'id_pemeriksaan': idPemeriksaan,
+      'foto_display': base64FotoDisplay,
+      'foto_server': base64FotoServer,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> _createMasterTargetTemuanTable(Database db) async {
+    await db.execute('''
+     CREATE TABLE Master_Target_Temuan (
+       jenis_karantina TEXT NOT NULL PRIMARY KEY,
+       uraian_list_json TEXT NOT NULL,
+       last_sync_timestamp TEXT NOT NULL
+     )
+   ''');
+    if (kDebugMode) {
+      print('✅ Table Master_Target_Temuan created/ensured.');
     }
+  }
 
     // Fungsi untuk menyimpan atau memperbarui data master target/temuan
     Future<void> insertOrUpdateMasterTargetTemuan(String jenisKarantina, List<String> uraianList) async {
@@ -247,6 +270,15 @@ class DatabaseHelper {
           print('💾 Proses surat tugas: ${suratTugas.idSuratTugas}');
         }
 
+        // Hapus detail lama sebelum memasukkan yang baru untuk memastikan konsistensi jika API menghapus item
+        // await delete('Petugas', 'id_surat_tugas = ?', [suratTugas.idSuratTugas]);
+        // await delete('Lokasi', 'id_surat_tugas = ?', [suratTugas.idSuratTugas]);
+        // await delete('Komoditas', 'id_surat_tugas = ?', [suratTugas.idSuratTugas]);
+        // Catatan: Penghapusan di atas akan efektif jika API selalu mengirim set lengkap.
+        // Jika API hanya mengirim update delta, maka ConflictAlgorithm.replace pada child sudah cukup
+        // asalkan ID child (id_petugas, id_lokasi, id_komoditas) stabil.
+        // Untuk permintaan user saat ini (update card ST Masuk), ConflictAlgorithm.replace cukup.
+
         // Simpan surat tugas
         await insertOrUpdateSuratTugas({
           'id_surat_tugas': suratTugas.idSuratTugas,
@@ -320,13 +352,68 @@ class DatabaseHelper {
   Future<void> insertOrUpdateSuratTugas(Map<String, dynamic> data) async {
     final db = await database;
     try {
+      final idSuratTugas = data['id_surat_tugas'];
+      String apiStatus = data['status']?.toString() ?? '';
+      String apiJenisKarantina = data['jenis_karantina']?.toString() ?? '';
+      String apiPtkId = data['ptk_id']?.toString() ?? '';
+
+      final List<Map<String, dynamic>> existingTasks = await db.query(
+        'Surat_Tugas',
+        columns: ['status', 'jenis_karantina', 'ptk_id'],
+        where: 'id_surat_tugas = ?',
+        whereArgs: [idSuratTugas],
+      );
+
+      String localStatus = '';
+      String localJenisKarantina = '';
+      String localPtkId = '';
+
+      if (existingTasks.isNotEmpty) {
+        localStatus = existingTasks.first['status'] as String? ?? '';
+        localJenisKarantina =
+            existingTasks.first['jenis_karantina'] as String? ?? '';
+        localPtkId = existingTasks.first['ptk_id'] as String? ?? '';
+      }
+
+      bool preferLocalStatus = false;
+      if ((localStatus == 'aktif' ||
+          localStatus == 'dikirim' ||
+          localStatus == 'selesai') &&
+          (apiStatus == 'tertunda' ||
+              apiStatus == 'Proses' ||
+              apiStatus.isEmpty)) {
+        preferLocalStatus = true;
+      }
+
+      Map<String, dynamic> dataToInsert = Map.from(data);
+
+      if (preferLocalStatus) {
+        dataToInsert['status'] = localStatus;
+        if (kDebugMode) {
+          print(
+              '🛡️ DB_HELPER: Mempertahankan status lokal "$localStatus" untuk ST ID: $idSuratTugas daripada status API "$apiStatus"');
+        }
+      } else {
+        dataToInsert['status'] = apiStatus.isEmpty ? 'tertunda' : apiStatus;
+        if (kDebugMode &&
+            localStatus.isNotEmpty &&
+            localStatus != dataToInsert['status']) {
+          print(
+              '🔄 DB_HELPER: Mengupdate status untuk ST ID: $idSuratTugas dari "$localStatus" menjadi "${dataToInsert['status']}"');
+        }
+      }
+
+      dataToInsert['jenis_karantina'] = apiJenisKarantina.isNotEmpty ? apiJenisKarantina : localJenisKarantina;
+      dataToInsert['ptk_id'] = apiPtkId.isNotEmpty ? apiPtkId : localPtkId;
+      // Jika localStatus kosong (data baru dari API), atau API mengirim status yang lebih maju, gunakan status API.
+
       await db.insert(
         'Surat_Tugas',
-        data,
+        dataToInsert, // Gunakan data yang sudah disesuaikan statusnya
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     } catch (e) {
-      debugPrint('❌ Error insert/update surat tugas: $e');
+      debugPrint('❌ Error insert/update surat tugas di DB Helper: $e');
       rethrow;
     }
   }
@@ -469,42 +556,45 @@ class DatabaseHelper {
     );
   }
 
-  Future<void> getImagetoDatabase(Uint8List imageBytes, String idPemeriksaan) async {
-    final db = await database;
-    final base64Image = base64Encode(imageBytes);
-    await db.insert('Dokumentasi_Periksa', {
-      'id_foto': const Uuid().v4(),
-      'id_pemeriksaan': idPemeriksaan,
-      'foto': base64Image,
-    }, conflictAlgorithm: ConflictAlgorithm.replace );
-  }
 
   Future<List<Map<String, dynamic>>> getImageFromDatabase(String idPemeriksaan) async {
     try {
       final db = await database;
-
-      if (idPemeriksaan.isEmpty) {
-        return [];
-      }
+      if (idPemeriksaan.isEmpty) return [];
 
       final List<Map<String, dynamic>> results = await db.query(
         'Dokumentasi_Periksa',
+        columns: ['id_foto', 'id_pemeriksaan', 'foto_display'], // Ambil foto_display
         where: 'id_pemeriksaan = ?',
         whereArgs: [idPemeriksaan],
       );
 
-      final processedResults = results.map((map) {
-        final processedMap = Map<String, dynamic>.from(map);
-        if (processedMap.containsKey('id') && processedMap['id'] == null) {
-          processedMap['id'] = 0;
-        }
-        return processedMap;
+      return results.map((row) {
+        final newRow = Map<String, dynamic>.from(row);
+        newRow['foto'] = newRow.remove('foto_display');
+        return newRow;
       }).toList();
-
-      return processedResults;
     } catch (e) {
       if (kDebugMode) {
-        print('Error in getImageFromDatabase: $e');
+        print('Error in getImageFromDatabase (untuk UI): $e');
+      }
+      return [];
+    }
+  }
+
+  Future<List<Uint8List>> loadServerImagesFromDb(String idPemeriksaan) async {
+    try {
+      final db = await database;
+      final List<Map<String, dynamic>> rows = await db.query(
+        'Dokumentasi_Periksa',
+        columns: ['foto_server'],
+        where: 'id_pemeriksaan = ?',
+        whereArgs: [idPemeriksaan],
+      );
+      return rows.map((e) => base64Decode(e['foto_server'] as String)).toList();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error in loadServerImagesFromDb: $e');
       }
       return [];
     }
@@ -520,11 +610,11 @@ class DatabaseHelper {
     final db = await database;
     final result = await db.query(
       'Dokumentasi_Periksa',
-      columns: ['foto'],
+      columns: ['foto_display'],
       where: 'id_pemeriksaan = ?',
       whereArgs: [idPemeriksaan],
     );
-    return result.map((row) => row['foto'] as String).toList();
+    return result.map((row) => row['foto_display'] as String).toList();
   }
 
   Future<Position?> getLocation() async {
@@ -607,12 +697,15 @@ class DatabaseHelper {
       if (data.isNotEmpty) {
         final hasilPemeriksaan = HasilPemeriksaan.fromMap(data.first);
 
-        final photos = await loadImagesFromDb(id);
+        final photos = await loadServerImagesFromDb(id);
 
         if (kDebugMode) {
           print('🔄 Attempting to sync single data for ID: $id');
           print('📄 Hasil Pemeriksaan: ${hasilPemeriksaan.toString()}');
-          print('📷 Photos Count: ${photos.length}');
+          print('📷 Server Photos Count (for sync): ${photos.length}');
+          for(int i=0; i<photos.length; i++){
+            print('   - Foto Server ${i+1} (dari DB lokal untuk sync) size: ${photos[i].lengthInBytes} bytes');
+          }
         }
 
         bool success = await sendHasilPemeriksaanToServer(hasilPemeriksaan, photos, userNip);
