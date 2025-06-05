@@ -6,11 +6,12 @@ import 'package:q_officer_barantin/models/petugas.dart';
 import 'package:q_officer_barantin/services/auth_provider.dart';
 import 'dart:io';
 import 'package:q_officer_barantin/dialog/logout_dialog.dart';
+import '../surat_tugas/detail_laporan.dart';
 
 import '../databases/db_helper.dart';
 import '../models/lokasi.dart';
 import '../models/st_lengkap.dart';
-import '../surat_tugas/st_tertunda.dart';
+import '../surat_tugas/st_masuk.dart';
 
 const Color darkBrown = Color(0xFF522E2E);
 const Color lightBackground = Color(0xFFF7F4EF);
@@ -43,6 +44,9 @@ class SideBar extends StatelessWidget {
             iconColor: darkerText,
             textColor: darkerText,
             onTap: () {
+              if (Scaffold.of(context).isDrawerOpen) {
+                Navigator.pop(context); // Close drawer
+              }
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const AkunSayaPage()),
@@ -55,6 +59,7 @@ class SideBar extends StatelessWidget {
             iconColor: darkerText,
             textColor: darkerText,
             onTap: () {
+              // context here is from SideBar's build method
               _showTutorialOptions(context);
             },
           ),
@@ -66,14 +71,13 @@ class SideBar extends StatelessWidget {
     );
   }
 
-  // Fungsi untuk menampilkan opsi tutorial
-  void _showTutorialOptions(BuildContext context) {
+  void _showTutorialOptions(BuildContext outerContext) { // outerContext is from SideBar
     showModalBottomSheet(
-      context: context,
+      context: outerContext,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (BuildContext context) {
+      builder: (BuildContext bottomSheetContext) { // bottomSheetContext is for the sheet's content
         return Container(
           padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
           child: Column(
@@ -90,53 +94,49 @@ class SideBar extends StatelessWidget {
               const SizedBox(height: 20),
 
               _TutorialOptionItem(
-                title: "Surat Tugas Tertunda",
-                description: "Tutorial tentang halaman detail surat tugas yang belum diterima",
+                title: "Surat Tugas Masuk",
+                description: "Tutorial tentang halaman detail surat tugas masuk yang belum diterima",
                 icon: Icons.assignment_outlined,
                 onTap: () async {
-                  Navigator.pop(context);
+                  Navigator.pop(bottomSheetContext); // Pop the bottom sheet first
 
-                  Navigator.pop(context);
+                  // Then, close the drawer if it's open
+                  if (outerContext.mounted && Scaffold.of(outerContext).isDrawerOpen) {
+                    Navigator.pop(outerContext);
+                  }
+                  // Ensure a small delay for the drawer to close before showing SnackBar or navigating
+                  await Future.delayed(const Duration(milliseconds: 100));
+
 
                   try {
                     final db = DatabaseHelper();
                     final data = await db.getData('Surat_Tugas');
-
                     StLengkap? suratTugasTertunda;
 
                     for (var item in data) {
                       final status = item['status'] ?? '';
-
                       if (status == 'tertunda' || status == 'Proses') {
-
                         final futures = await Future.wait([
                           db.getPetugasById(item['id_surat_tugas']),
                           db.getLokasiById(item['id_surat_tugas']),
                           db.getKomoditasById(item['id_surat_tugas']),
                         ]);
-
                         final petugasList = (futures[0] as List).map((p) => Petugas.fromDbMap(p)).toList();
                         final lokasiList = (futures[1] as List).map((l) => Lokasi.fromDbMap(l)).toList();
                         final komoditasList = (futures[2] as List).map((k) => Komoditas.fromDbMap(k)).toList();
-
-                        suratTugasTertunda = StLengkap.fromDbMap(
-                          item,
-                          petugasList,
-                          lokasiList,
-                          komoditasList,
-                        );
+                        suratTugasTertunda = StLengkap.fromDbMap(item, petugasList, lokasiList, komoditasList);
                         break;
                       }
                     }
 
-                    if (suratTugasTertunda != null) {
+                    if (suratTugasTertunda != null && outerContext.mounted) {
                       Navigator.push(
-                        context,
+                        outerContext,
                         MaterialPageRoute(
                           builder: (context) => SuratTugasTertunda(
                             suratTugas: suratTugasTertunda!,
                             onTerimaTugas: () async {
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              ScaffoldMessenger.of(outerContext).showSnackBar(
                                 const SnackBar(
                                   content: Text('Ini adalah mode tutorial - tombol tidak aktif'),
                                   backgroundColor: Color(0xFF522E2E),
@@ -148,26 +148,176 @@ class SideBar extends StatelessWidget {
                           ),
                         ),
                       );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                    } else if (outerContext.mounted) {
+                      ScaffoldMessenger.of(outerContext).showSnackBar(
                         const SnackBar(
-                          content: Text('Tidak ada surat tugas tertunda untuk tutorial'),
+                          content: Text('Tidak ada surat tugas masuk untuk tutorial'),
                           backgroundColor: Color(0xFF522E2E),
                         ),
                       );
                     }
                   } catch (e) {
-                    // Error handling
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Gagal memuat data untuk tutorial: $e'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
+                    if (outerContext.mounted){
+                      ScaffoldMessenger.of(outerContext).showSnackBar(
+                        SnackBar(
+                          content: Text('Gagal memuat data untuk tutorial: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
                   }
                 },
               ),
               const SizedBox(height: 10),
+
+              _TutorialOptionItem(
+                title: "Detail Laporan (Surat Tugas Aktif)",
+                description: "Tutorial halaman detail laporan untuk surat tugas yang sudah memiliki hasil pemeriksaan.",
+                icon: Icons.assignment_turned_in_outlined,
+                onTap: () async {
+                  Navigator.pop(bottomSheetContext); // Pop the bottom sheet
+
+                  if (outerContext.mounted && Scaffold.of(outerContext).isDrawerOpen) {
+                    Navigator.pop(outerContext); // Close the drawer
+                  }
+                  await Future.delayed(const Duration(milliseconds: 100));
+
+
+                  try {
+                    final db = DatabaseHelper();
+                    final data = await db.getData('Surat_Tugas');
+                    StLengkap? suratTugasUntukTutorial;
+
+                    for (var item in data) {
+                      final status = item['status'] ?? '';
+                      if (status == 'dikirim' || status == 'tersimpan_offline') {
+                        final hasilPemeriksaan = await db.getPeriksaById(item['id_surat_tugas']);
+                        if (hasilPemeriksaan.isNotEmpty) {
+                          final futures = await Future.wait([
+                            db.getPetugasById(item['id_surat_tugas']),
+                            db.getLokasiById(item['id_surat_tugas']),
+                            db.getKomoditasById(item['id_surat_tugas']),
+                          ]);
+                          suratTugasUntukTutorial = StLengkap.fromDbMap(
+                            item,
+                            (futures[0] as List).map((p) => Petugas.fromDbMap(p)).toList(),
+                            (futures[1] as List).map((l) => Lokasi.fromDbMap(l)).toList(),
+                            (futures[2] as List).map((k) => Komoditas.fromDbMap(k)).toList(),
+                          );
+                          break;
+                        }
+                      }
+                    }
+
+                    if (suratTugasUntukTutorial != null && outerContext.mounted) {
+                      Navigator.push(
+                        outerContext,
+                        MaterialPageRoute(
+                          builder: (context) => DetailLaporan(
+                            suratTugas: suratTugasUntukTutorial!,
+                            idSuratTugas: suratTugasUntukTutorial.idSuratTugas,
+                            onSelesaiTugas: () { /* Kosongkan untuk mode tutorial */ },
+                            isViewOnly: false,
+                            showDetailHasil: true,
+                            showTutorialImmediately: true,
+                          ),
+                        ),
+                      );
+                    } else if(outerContext.mounted) {
+                      ScaffoldMessenger.of(outerContext).showSnackBar(
+                        const SnackBar(
+                          content: Text('Tidak ada surat tugas dengan laporan untuk tutorial ST Aktif.'),
+                          backgroundColor: Color(0xFF522E2E),
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (outerContext.mounted){
+                      ScaffoldMessenger.of(outerContext).showSnackBar(
+                        SnackBar(
+                          content: Text('Gagal memuat data untuk tutorial ST Aktif: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                },
+              ),
+              const SizedBox(height: 10),
+              _TutorialOptionItem(
+                title: "Detail Surat Tugas Selesai",
+                description: "Tutorial halaman detail untuk surat tugas yang telah selesai.",
+                icon: Icons.task_alt_outlined,
+                onTap: () async {
+                  Navigator.pop(bottomSheetContext); // Pop the bottom sheet
+
+                  if (outerContext.mounted && Scaffold.of(outerContext).isDrawerOpen) {
+                    Navigator.pop(outerContext); // Close the drawer
+                  }
+                  await Future.delayed(const Duration(milliseconds: 100));
+
+
+                  try {
+                    final db = DatabaseHelper();
+                    final data = await db.getData('Surat_Tugas');
+                    StLengkap? suratTugasSelesaiUntukTutorial;
+
+                    for (var item in data) {
+                      final status = item['status'] ?? '';
+                      if (status == 'selesai') {
+                        final hasilPemeriksaan = await db.getPeriksaById(item['id_surat_tugas']);
+                        if (hasilPemeriksaan.isNotEmpty) {
+                          final futures = await Future.wait([
+                            db.getPetugasById(item['id_surat_tugas']),
+                            db.getLokasiById(item['id_surat_tugas']),
+                            db.getKomoditasById(item['id_surat_tugas']),
+                          ]);
+                          suratTugasSelesaiUntukTutorial = StLengkap.fromDbMap(
+                            item,
+                            (futures[0] as List).map((p) => Petugas.fromDbMap(p)).toList(),
+                            (futures[1] as List).map((l) => Lokasi.fromDbMap(l)).toList(),
+                            (futures[2] as List).map((k) => Komoditas.fromDbMap(k)).toList(),
+                          );
+                          break;
+                        }
+                      }
+                    }
+
+                    if (suratTugasSelesaiUntukTutorial != null && outerContext.mounted) {
+                      Navigator.push(
+                        outerContext,
+                        MaterialPageRoute(
+                          builder: (context) => DetailLaporan(
+                            suratTugas: suratTugasSelesaiUntukTutorial!,
+                            idSuratTugas: suratTugasSelesaiUntukTutorial.idSuratTugas,
+                            onSelesaiTugas: () { /* Kosongkan untuk mode tutorial */ },
+                            isViewOnly: true,
+                            showDetailHasil: true,
+                            customTitle: "Surat Tugas Selesai",
+                            showTutorialImmediately: true,
+                          ),
+                        ),
+                      );
+                    } else if (outerContext.mounted) {
+                      ScaffoldMessenger.of(outerContext).showSnackBar(
+                        const SnackBar(
+                          content: Text('Tidak ada Surat Tugas Selesai dengan hasil pemeriksaan untuk tutorial.'),
+                          backgroundColor: Color(0xFF522E2E),
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (outerContext.mounted){
+                      ScaffoldMessenger.of(outerContext).showSnackBar(
+                        SnackBar(
+                          content: Text('Gagal memuat data untuk tutorial Surat Tugas Selesai: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                },
+              ),
             ],
           ),
         );

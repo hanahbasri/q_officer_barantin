@@ -7,6 +7,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:q_officer_barantin/models/st_lengkap.dart';
 import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:q_officer_barantin/main.dart';
 
 class SuratTugasTertunda extends StatefulWidget {
   final StLengkap suratTugas;
@@ -752,21 +753,63 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                         : () async {
                       if (kDebugMode) print('✅ Memanggil onTerimaTugas...');
 
-                      bool apiSuccess = await HistoryApiService.sendTaskStatusUpdate(
+                      // Tampilkan dialog loading
+                      showDialog(
                         context: context,
-                        idSuratTugas: widget.suratTugas.idSuratTugas,
-                        status: "terima",
-                        keterangan: "Menerima Surat Tugas No: ${widget.suratTugas.noSt}",
+                        barrierDismissible: false,
+                        builder: (BuildContext dialogContext) {
+                          return Dialog(
+                            backgroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            child: Padding(
+                              padding: const EdgeInsets.all(20.0),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircularProgressIndicator(
+                                    valueColor: AlwaysStoppedAnimation<Color>(MyApp.karantinaBrown),
+                                  ),
+                                  const SizedBox(width: 20),
+                                  const Text("Memproses penerimaan...", style: TextStyle(fontSize: 16)),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
                       );
 
-                      if (apiSuccess){
-                        if (kDebugMode) print('✅ Status "terima" berhasil dikirim ke API.');
-                        await widget.onTerimaTugas();
-                        if (context.mounted) {
-                          Navigator.pop(context);
+                      bool apiSuccess = false;
+                      try {
+                        // Kirim status "terima" ke API
+                        apiSuccess = await HistoryApiService.sendTaskStatusUpdate(
+                          context: context, // Menggunakan context dari widget build
+                          idSuratTugas: widget.suratTugas.idSuratTugas,
+                          status: "terima", // Status untuk API
+                          keterangan: "Petugas telah menerima surat tugas.",
+                        );
+                      } catch (e) {
+                        if (kDebugMode) {
+                          print('Error saat mengirim status "terima" ke API: $e');
                         }
+                        // apiSuccess akan tetap false
+                      }
+
+                      // Tutup dialog loading
+                      if (mounted) Navigator.pop(context); // Menutup dialog loading
+
+                      if (apiSuccess) {
+                        // Lanjutkan dengan logika yang sudah ada jika API berhasil
+                        await widget.onTerimaTugas(); // Ini akan memanggil _terimaTugas di SuratTugasPage
                       } else {
-                        if (kDebugMode) print('⚠️ Gagal mengirim status "terima" ke API. Proses penerimaan tugas mungkin tidak dilanjutkan.');
+                        // Jika API gagal, tampilkan pesan error
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Gagal mengirim status penerimaan tugas ke server. Silakan coba lagi nanti.'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
                       }
                     },
                     // sampe sini
