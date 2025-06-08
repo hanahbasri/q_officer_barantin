@@ -28,10 +28,8 @@ class DetailLaporan extends StatefulWidget {
   final bool showDetailHasil;
   final bool showTutorialImmediately;
 
-  // GlobalKeys untuk tutorial
   final GlobalKey? buatLaporanButtonKeyForTutorial;
   final GlobalKey? selesaiTugasButtonKeyForTutorial;
-
 
   const DetailLaporan({
     super.key,
@@ -42,43 +40,34 @@ class DetailLaporan extends StatefulWidget {
     this.showDetailHasil = false,
     this.customTitle,
     this.showTutorialImmediately = false,
-    this.buatLaporanButtonKeyForTutorial, // Tambahkan ini
-    this.selesaiTugasButtonKeyForTutorial, // Tambahkan ini
+    this.buatLaporanButtonKeyForTutorial,
+    this.selesaiTugasButtonKeyForTutorial,
   });
 
   @override
-  _DetailLaporanState createState() => _DetailLaporanState();
+  DetailLaporanState createState() => DetailLaporanState();
 }
 
 
-class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderStateMixin {
+class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderStateMixin {
   late StreamSubscription<ConnectivityResult> _subscription;
   bool _isOffline = false;
   bool _showConnectionMessage = false;
   List<Map<String, dynamic>> _hasilList = [];
   var uuid = Uuid();
   bool _hasSeenTutorial = false;
-
-  // Tutorial coach mark
   late TutorialCoachMark tutorialCoachMark;
   final GlobalKey suratTugasKey = GlobalKey();
-
-  // CardHasilPeriksa dan tombol sinkronisasi
   final GlobalKey cardHasilPeriksaKey = GlobalKey();
   final GlobalKey tombolSinkronKey = GlobalKey();
-
-  // GlobalKey untuk tombol "Buat Laporan Pemeriksaan" dan "Selesai Tugas"
-  // Jika widget.buatLaporanButtonKeyForTutorial tidak null, gunakan itu, jika tidak buat baru
   late GlobalKey buatLaporanButtonKey;
   late GlobalKey selesaiTugasButtonKey;
-
 
   @override
   void initState() {
     super.initState();
     buatLaporanButtonKey = widget.buatLaporanButtonKeyForTutorial ?? GlobalKey();
     selesaiTugasButtonKey = widget.selesaiTugasButtonKeyForTutorial ?? GlobalKey();
-
     _monitorConnection();
     _initializePageAndTutorial();
   }
@@ -94,10 +83,7 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
     await _loadHasilPemeriksaan();
 
     if (mounted) {
-      // Selalu inisialisasi tutorial, _showTutorial akan menangani apakah akan ditampilkan atau tidak
-      // Hal ini untuk memastikan key global untuk tombol sudah siap jika tutorial dipicu manual
-      _initTutorial(); // Pindahkan ke sini agar key siap
-
+      _initTutorial();
       if (!_hasSeenTutorial || widget.showTutorialImmediately) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
@@ -114,7 +100,7 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
     if (widget.customTitle == "Surat Tugas Selesai") {
       tutorialKey = 'seen_detail_laporan_selesai_tutorial';
     } else
-    if (widget.isViewOnly) { // Untuk Riwayat Pemeriksaan lain yang view only
+    if (widget.isViewOnly) {
       tutorialKey = 'seen_detail_laporan_riwayat_tutorial';
     } else { // Untuk ST Aktif
       tutorialKey = 'seen_detail_laporan_aktif_tutorial_v2';
@@ -136,9 +122,6 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
     } else {
       tutorialKey = 'seen_detail_laporan_aktif_tutorial_v2';
     }
-    // Hanya simpan jika bukan mode tutorial yang dipicu dari sidebar,
-    // atau jika ini adalah tutorial yang dipicu secara otomatis (bukan dari tombol help)
-    // dan bukan dari home (yang berarti ini adalah tutorial yang dijalankan otomatis)
     if (!widget.showTutorialImmediately || (widget.showTutorialImmediately && ModalRoute.of(context)?.settings.name != '/home')) {
       await prefs.setBool(tutorialKey, true);
     }
@@ -176,13 +159,11 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
   }
 
   void _showTutorial() {
-    // Re-initialize dengan state terbaru dari _hasilList untuk memastikan target yang benar
-    _initTutorial(); // This will now use the latest _hasilList
+    _initTutorial();
 
     if (tutorialCoachMark.targets.isEmpty) {
       debugPrint("[DetailLaporan Tutorial] No targets to display. Saving tutorial status.");
       _saveTutorialStatus();
-      // Jika mode tutorial dan tidak ada target, pop.
       if (widget.showTutorialImmediately && mounted) {
         Navigator.pop(context);
       }
@@ -199,8 +180,7 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
     bool isSelesaiTutorial = widget.customTitle == "Surat Tugas Selesai";
     bool isActiveTaskTutorial = widget.showTutorialImmediately && !isSelesaiTutorial && !widget.isViewOnly;
 
-
-    // Target 1: Detail Surat Tugas (Umum untuk semua)
+    // Target 1: Detail Surat Tugas
     if (suratTugasKey.currentContext != null) {
       targets.add(
         TargetFocus(
@@ -297,7 +277,7 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
       );
     }
 
-    // Tombol Sinkronisasi (HANYA JIKA BUKAN ST SELESAI dan BUKAN VIEW ONLY LAINNYA)
+    // Tombol Sinkronisasi
     if (hasHasilPeriksa && !widget.isViewOnly && !isSelesaiTutorial && tombolSinkronKey.currentContext != null) {
       targets.add(
         TargetFocus(
@@ -344,11 +324,11 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
       );
     }
 
-    // Tombol "Buat Laporan Pemeriksaan" (HANYA JIKA BUKAN ST SELESAI dan BUKAN VIEW ONLY LAINNYA)
+    // Tombol "Buat Laporan Pemeriksaan"
     if (!widget.isViewOnly && !isSelesaiTutorial && buatLaporanButtonKey.currentContext != null) {
       targets.add(
         TargetFocus(
-          identify: "buatLaporanButtonKey", // Gunakan key yang sudah didefinisikan
+          identify: "buatLaporanButtonKey",
           keyTarget: buatLaporanButtonKey,
           alignSkip: Alignment.bottomRight,
           shape: ShapeLightFocus.RRect,
@@ -390,8 +370,7 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
       );
     }
 
-
-    // Tombol "Selesai Tugas" (HANYA JIKA BUKAN ST SELESAI dan BUKAN VIEW ONLY LAINNYA)
+    // Tombol "Selesai Tugas"
     if (!widget.isViewOnly && !isSelesaiTutorial && selesaiTugasButtonKey.currentContext != null) {
       targets.add(
         TargetFocus(
@@ -436,10 +415,7 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
         ),
       );
     }
-
     debugPrint("[DetailLaporan Tutorial] Created ${targets.length} targets. HasHasilPeriksa: $hasHasilPeriksa, isViewOnly: ${widget.isViewOnly}, isSelesaiTutorial: $isSelesaiTutorial, buatLaporanKey: ${buatLaporanButtonKey.currentContext != null}, selesaiTugasKey: ${selesaiTugasButtonKey.currentContext != null}");
-
-
     return targets;
   }
 
@@ -457,7 +433,7 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
         }
 
         final ping = await getPingLatency();
-        if (ping < 1000) { // Increased timeout for potentially slower connections
+        if (ping < 1000) {
           final db = DatabaseHelper();
           if (mounted) {
             final authProvider = Provider.of<AuthProvider>(
@@ -488,7 +464,6 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
   Future<void> _loadHasilPemeriksaan() async {
     if (widget.idSuratTugas == null) return;
     final db = DatabaseHelper();
-    // final periksaList = await db.getPeriksaById(widget.idSuratTugas!); // Deprecated
     final periksaListAsModel = await db.getHasilPemeriksaanById(widget.idSuratTugas!);
     final periksaList = periksaListAsModel.map((e) => e.toMap()).toList();
 
@@ -499,9 +474,6 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
             periksaList.where((e) => e['id_surat_tugas'] == widget.idSuratTugas)
                 .toList();
       });
-      // Setelah memuat hasil, inisialisasi ulang tutorial jika diperlukan
-      // agar target untuk tombol sinkronisasi atau card hasil periksa bisa ditemukan
-      // Ini penting jika halaman dimuat ulang atau hasil pemeriksaan berubah
       _initTutorial();
     }
   }
@@ -573,11 +545,11 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
               } else {
                 tutorialKey = 'seen_detail_laporan_aktif_tutorial_v2';
               }
-              await prefs.remove(tutorialKey); // Hapus status agar tutorial bisa muncul lagi
+              await prefs.remove(tutorialKey);
 
               if (mounted) {
                 setState(() => _hasSeenTutorial = false);
-                _showTutorial(); // Panggil _showTutorial yang sudah diinisialisasi
+                _showTutorial();
               }
             },
             tooltip: "Tampilkan Tutorial",
@@ -706,7 +678,6 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
                     ),
                     const SizedBox(height: 1),
 
-                    // HASIL PEMERIKSAAN LIST
                     Column(
                       children: List.generate(_hasilList.length, (i) {
                         final item = _hasilList[i];
@@ -714,7 +685,6 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
                           key: (i == 0 && (widget.showDetailHasil || (widget.showTutorialImmediately && !widget.isViewOnly && ! (widget.customTitle == "Surat Tugas Selesai")) )) ? cardHasilPeriksaKey : null,
                           item: item,
                           canTap: canNavigateOnCardTap && widget.showDetailHasil, //
-                          // Tombol sync hanya muncul jika bukan view only mode manapun (isViewOnly dari ST Aktif adalah false)
                           showSync: !widget.isViewOnly,
                           enableAutoSlide: true,
                           syncButtonKey: (i == 0 && !widget.isViewOnly && !(widget.customTitle == "Surat Tugas Selesai")) ? tombolSinkronKey : null,
@@ -756,8 +726,6 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
                     ),
                     const SizedBox(height: 20),
 
-                    // TOMBOL-TOMBOL FOOTER (Buat Laporan & Selesai Tugas)
-                    // Muncul hanya jika !widget.isViewOnly
                     if (!widget.isViewOnly)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -766,7 +734,7 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             SizedBox(
-                              key: buatLaporanButtonKey, // Gunakan GlobalKey yang sudah didefinisikan
+                              key: buatLaporanButtonKey,
                               width: 250, // Lebar penuh
                               child: ElevatedButton.icon(
                                 label: const Text(
@@ -778,7 +746,7 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
                                   ),
                                 ),
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFFEC559), // Warna kuning/gold
+                                  backgroundColor: const Color(0xFFFEC559),
                                   padding: const EdgeInsets.symmetric(vertical: 12),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(8),
@@ -815,26 +783,23 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
                                       builder: (context) => FormPeriksa(
                                         idSuratTugas: widget.idSuratTugas!,
                                         suratTugas: widget.suratTugas,
-                                        onSelesaiTugas: widget.onSelesaiTugas, // Tetap teruskan callback ini
+                                        onSelesaiTugas: widget.onSelesaiTugas,
                                         userNip: userNip,
                                       ),
                                     ),
                                   );
 
                                   if (result == true && mounted) {
-                                    // Jika FormPeriksa mengembalikan true (artinya sukses),
-                                    // muat ulang daftar hasil pemeriksaan.
                                     await _loadHasilPemeriksaan();
                                   }
                                 },
                               ),
                             ),
-                            const SizedBox(height: 12), // Spasi antara tombol
+                            const SizedBox(height: 12),
 
-                            // TOMBOL SELESAI TUGAS (EXISTING)
                             SizedBox(
-                              key: selesaiTugasButtonKey, // Gunakan GlobalKey yang sudah didefinisikan
-                              width: 250, // Lebar penuh
+                              key: selesaiTugasButtonKey,
+                              width: 250,
                               child: ElevatedButton(
                                 onPressed: () async {
                                   if (widget.showTutorialImmediately) {
@@ -891,7 +856,7 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
                                           if (kDebugMode) print('Error saat mengirim status "selesai" ke API: $e');
                                         }
 
-                                        if (Navigator.canPop(context)) Navigator.pop(context); // Tutup dialog loading
+                                        if (Navigator.canPop(context)) Navigator.pop(context);
 
                                         if (apiSuccess) {
                                           widget.onSelesaiTugas();
@@ -905,7 +870,6 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
                                               ),
                                             );
                                           }
-                                          // Tetap selesaikan tugas secara lokal meskipun API gagal
                                           widget.onSelesaiTugas();
                                           if (Navigator.canPop(context)) Navigator.pop(context, true);
                                         }
@@ -923,7 +887,7 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 20), // Spasi di bawah tombol terakhir
+                            const SizedBox(height: 20),
                           ],
                         ),
                       ),
@@ -944,9 +908,8 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Label tanpa titik dua
           SizedBox(
-            width: 110, // Lebar untuk label saja
+            width: 110,
             child: Text(
               label,
               style: const TextStyle(
@@ -956,7 +919,6 @@ class _DetailLaporanState extends State<DetailLaporan> with SingleTickerProvider
               ),
             ),
           ),
-          // Titik dua terpisah
           const Text(
             ":",
             style: TextStyle(
@@ -1174,7 +1136,7 @@ Widget buildConnectionStatus({required bool isConnected}) {
         Expanded(
           child: Text(
             isConnected
-                ? "Koneksi internet terhubung. Data berhasil disinkronkan."
+                ? "Koneksi internet terhubung. Data akan disinkronkan."
                 : "Koneksi internet terputus. Data akan disimpan sementara.",
             textAlign: TextAlign.left,
             style: const TextStyle(
@@ -1220,7 +1182,6 @@ Widget buildLaporanFooter({
 }) {
   return Consumer<AuthProvider>(
     builder: (context, authProvider, child) {
-      final userNip = authProvider.userNip;
 
       return Center(
         child: Column(
@@ -1229,7 +1190,7 @@ Widget buildLaporanFooter({
               width: 270,child: ElevatedButton(
               key: buatLaporanKey,
               onPressed: () async {
-                if (isInTutorialMode) { // Cek mode tutorial
+                if (isInTutorialMode) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text(
@@ -1247,12 +1208,11 @@ Widget buildLaporanFooter({
                 } else {
                   showAnimatedSelesaikanTugasDialog(
                     context: context,
-                    onConfirmed: () async { // Jadikan async
-                      // Tampilkan dialog loading
+                    onConfirmed: () async {
                       showDialog(
                         context: context,
                         barrierDismissible: false,
-                        builder: (BuildContext dialogContext) { // Beri nama beda untuk context dialog
+                        builder: (BuildContext dialogContext) {
                           return Dialog(
                             backgroundColor: Colors.white,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -1275,10 +1235,9 @@ Widget buildLaporanFooter({
 
                       bool apiSuccess = false;
                       try {
-                        // Kirim status "selesai" ke API
                         apiSuccess = await HistoryApiService.sendTaskStatusUpdate(
-                          context: context, // Menggunakan context dari buildLaporanFooter
-                          idSuratTugas: suratTugas.idSuratTugas, // Menggunakan idSuratTugas dari parameter StLengkap
+                          context: context,
+                          idSuratTugas: suratTugas.idSuratTugas,
                           status: "selesai", // Status untuk API
                           keterangan: "Petugas telah menyelesaikan surat tugas.",
                         );
@@ -1286,22 +1245,16 @@ Widget buildLaporanFooter({
                         if (kDebugMode) {
                           print('Error saat mengirim status "selesai" ke API: $e');
                         }
-                        // apiSuccess akan tetap false
                       }
 
-                      // Tutup dialog loading
-                      // Pastikan context yang digunakan untuk pop adalah context dari dialog, bukan dari parent widget
-                      // Salah satu cara adalah memastikan dialogContext dapat diakses, atau jika tidak, pastikan mounted sebelum pop.
-                      // Untuk simpelnya, kita pop context yang sama dengan showDialog.
-                      if (Navigator.canPop(context)) { // Periksa apakah dialog masih ada di stack
-                        Navigator.pop(context); // Ini akan menutup dialog loading
+                      if (Navigator.canPop(context)) {
+                        Navigator.pop(context);
                       }
-
 
                       if (apiSuccess) {
-                        onSelesaiTugas(); // Panggil fungsi callback untuk menyelesaikan tugas secara lokal
-                        if (Navigator.canPop(context)) { // Periksa lagi sebelum pop halaman utama
-                          Navigator.pop(context, true); // Kembali dari DetailLaporan dan tandai sukses
+                        onSelesaiTugas();
+                        if (Navigator.canPop(context)) {
+                          Navigator.pop(context, true);
                         }
                       } else {
                         if (context.mounted) {
@@ -1311,11 +1264,9 @@ Widget buildLaporanFooter({
                               backgroundColor: Colors.red,
                             ),
                           );
-                          // Pertimbangkan apakah tetap menjalankan onSelesaiTugas atau tidak jika API gagal.
-                          // Untuk konsistensi UI lokal, kita bisa tetap jalankan.
                           onSelesaiTugas();
                           if (Navigator.canPop(context)) {
-                            Navigator.pop(context, true); // Anggap sukses lokal, karena data sudah diubah lokal
+                            Navigator.pop(context, true);
                           }
                         }
                       }

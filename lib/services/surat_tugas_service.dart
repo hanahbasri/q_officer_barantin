@@ -175,8 +175,8 @@ class SuratTugasService {
 
   static bool _validatePayloadSize(List<Uint8List> photos) {
     int totalCompressedSize = photos.fold(0, (sum, photo) => sum + photo.length);
-    int estimatedBase64Size = (totalCompressedSize * 1.33).round();
-    int estimatedJsonOverhead = 2000; // Overhead untuk JSON fields lainnya
+    int estimatedBase64Size = (totalCompressedSize * 4 / 3).ceil();
+    int estimatedJsonOverhead = 2000 + (photos.length * 150);
     int totalEstimatedPayload = estimatedBase64Size + estimatedJsonOverhead;
 
     if (kDebugMode) {
@@ -190,7 +190,6 @@ class SuratTugasService {
 
     return totalEstimatedPayload <= MAX_PAYLOAD_SIZE_BYTES;
   }
-
   static Future<bool> submitHasilPemeriksaan(
       HasilPemeriksaan hasil,
       List<Uint8List> compressedPhotos,

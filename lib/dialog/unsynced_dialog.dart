@@ -145,9 +145,8 @@ class _UnsyncedDataDialogContentState
             ),
             const SizedBox(height: 28),
 
-            // Tombol Aksi
             SizedBox(
-              width: double.infinity,
+              width: 120,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: widget.primaryColor,

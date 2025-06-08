@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:q_officer_barantin/services/history_service.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 import '../main.dart';
-import '../services/history_service.dart';
 import 'periksa_lokasi.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:q_officer_barantin/models/st_lengkap.dart';
@@ -24,14 +24,12 @@ class SuratTugasTertunda extends StatefulWidget {
   });
 
   @override
-  _SuratTugasTertundaState createState() => _SuratTugasTertundaState();
+  SuratTugasTertundaState createState() => SuratTugasTertundaState();
 }
 
-class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
+class SuratTugasTertundaState extends State<SuratTugasTertunda> {
   bool _isHeaderExpanded = false;
   bool _hasSeenTutorial = false;
-
-  // Tutorial coach mark
   late TutorialCoachMark tutorialCoachMark;
   final GlobalKey headerCardKey = GlobalKey();
   final GlobalKey petugasCardKey = GlobalKey();
@@ -44,10 +42,8 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
     super.initState();
 
     if (widget.showTutorialImmediately) {
-      // Untuk mode tutorial, langsung tampilkan tutorial
       _hasSeenTutorial = false;
     } else {
-      // Untuk mode normal, cek status tutorial
       _checkTutorialStatus();
     }
 
@@ -90,14 +86,12 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
       onFinish: () {
         debugPrint("Tutorial selesai");
         _saveTutorialStatus();
-        // Jika ini mode tutorial, kembali ke halaman sebelumnya
         if (widget.showTutorialImmediately) {
           Navigator.pop(context);
         }
       },
       onSkip: () {
         _saveTutorialStatus();
-        // Jika ini mode tutorial, kembali ke halaman sebelumnya
         if (widget.showTutorialImmediately) {
           Navigator.pop(context);
         }
@@ -476,7 +470,6 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Bagian judul untuk petugas
                       Row(
                         children: [
                           const Icon(
@@ -514,11 +507,10 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                       const SizedBox(height: 12),
                       const Divider(height: 1, color: Color(0xFFEEEEEE)),
 
-                      // Daftar petugas dengan scrollbar vertikal
                       SizedBox(
                         height: widget.suratTugas.petugas.length > 2
-                            ? 200  // Tinggi tetap saat ada lebih dari 2 petugas
-                            : null, // Tinggi dinamis untuk beberapa petugas
+                            ? 200
+                            : null,
                         child: Scrollbar(
                           thumbVisibility: true,
                           trackVisibility: true,
@@ -691,7 +683,7 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                                   initialCameraPosition: CameraPosition(
                                     target: widget.suratTugas.lokasi.isNotEmpty
                                         ? LatLng(widget.suratTugas.lokasi[0].latitude, widget.suratTugas.lokasi[0].longitude)
-                                        : const LatLng(-6.200000, 106.816666), // Default Jakarta
+                                        : const LatLng(-6.200000, 106.816666),
                                     zoom: 14,
                                   ),
                                   zoomControlsEnabled: false,
@@ -728,7 +720,6 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
 
               const SizedBox(height: 24),
 
-              // Tombol "Terima Tugas" yang terpusat
               Center(
                 child: SizedBox(
                   width: 250,
@@ -743,6 +734,7 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                         ),
                       );
                     }
+                    // dari sini
                         : widget.hasActiveTask
                         ? () {
                       if (kDebugMode) print('🚫 Menampilkan dialog tidak tersedia karena hasActiveTask: ${widget.hasActiveTask}');
@@ -751,7 +743,6 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
                         : () async {
                       if (kDebugMode) print('✅ Memanggil onTerimaTugas...');
 
-                      // Tampilkan dialog loading
                       showDialog(
                         context: context,
                         barrierDismissible: false,
@@ -778,28 +769,28 @@ class _SuratTugasTertundaState extends State<SuratTugasTertunda> {
 
                       bool apiSuccess = false;
                       try {
-                        // Kirim status "terima" ke API
                         apiSuccess = await HistoryApiService.sendTaskStatusUpdate(
-                          context: context, // Menggunakan context dari widget build
+                          context: context,
                           idSuratTugas: widget.suratTugas.idSuratTugas,
-                          status: "terima", // Status untuk API
+                          status: "terima",
                           keterangan: "Petugas telah menerima surat tugas.",
                         );
                       } catch (e) {
                         if (kDebugMode) {
                           print('Error saat mengirim status "terima" ke API: $e');
                         }
-                        // apiSuccess akan tetap false
                       }
 
-                      // Tutup dialog loading
-                      if (mounted) Navigator.pop(context); // Menutup dialog loading
+                      if (mounted) Navigator.pop(context); // Pop loading dialog
 
                       if (apiSuccess) {
-                        // Lanjutkan dengan logika yang sudah ada jika API berhasil
-                        await widget.onTerimaTugas(); // Ini akan memanggil _terimaTugas di SuratTugasPage
+                        await widget.onTerimaTugas();
+                        // --- TAMBAHKAN BARIS INI ---
+                        if (mounted) {
+                          Navigator.pop(context); // Tutup halaman SuratTugasTertunda
+                        }
+                        // --------------------------
                       } else {
-                        // Jika API gagal, tampilkan pesan error
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -882,7 +873,6 @@ class _BounceCancelDialogState extends State<_BounceCancelDialog>
   void initState() {
     super.initState();
 
-    // Animasi pantulan besar pertama
     _initialBounceController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -896,7 +886,6 @@ class _BounceCancelDialogState extends State<_BounceCancelDialog>
       ),
     ]).animate(_initialBounceController);
 
-    // Animasi pantulan kecil berkelanjutan
     _continuousBounceController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
@@ -915,10 +904,8 @@ class _BounceCancelDialogState extends State<_BounceCancelDialog>
       ),
     ]).animate(_continuousBounceController);
 
-    // Mulai animasi awal
     _initialBounceController.forward();
 
-    // Mulai animasi berkelanjutan setelah yang awal selesai
     _initialBounceController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         _continuousBounceController.repeat();
@@ -941,11 +928,9 @@ class _BounceCancelDialogState extends State<_BounceCancelDialog>
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Efek animasi gabungan
           AnimatedBuilder(
             animation: Listenable.merge([_initialBounceAnimation, _continuousBounceAnimation]),
             builder: (context, child) {
-              // Gunakan nilai animasi awal sampai selesai, lalu gunakan yang berkelanjutan
               double scale = _initialBounceController.isCompleted
                   ? _continuousBounceAnimation.value
                   : _initialBounceAnimation.value;

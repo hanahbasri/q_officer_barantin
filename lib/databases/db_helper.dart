@@ -370,14 +370,15 @@ class DatabaseHelper {
 
       if (existingTasks.isNotEmpty) {
         localStatus = existingTasks.first['status'] as String? ?? '';
-        localJenisKarantina =
-            existingTasks.first['jenis_karantina'] as String? ?? '';
+        localJenisKarantina = existingTasks.first['jenis_karantina'] as String? ?? '';
         localPtkId = existingTasks.first['ptk_id'] as String? ?? '';
       }
 
       bool preferLocalStatus = false;
+      // PERBAIKAN: Tambahkan 'dikirim' ke dalam kondisi preferLocalStatus
       if ((localStatus == 'aktif' ||
           localStatus == 'dikirim' ||
+          localStatus == 'tersimpan_offline' ||
           localStatus == 'selesai') &&
           (apiStatus == 'tertunda' ||
               apiStatus == 'Proses' ||
@@ -405,11 +406,10 @@ class DatabaseHelper {
 
       dataToInsert['jenis_karantina'] = apiJenisKarantina.isNotEmpty ? apiJenisKarantina : localJenisKarantina;
       dataToInsert['ptk_id'] = apiPtkId.isNotEmpty ? apiPtkId : localPtkId;
-      // Jika localStatus kosong (data baru dari API), atau API mengirim status yang lebih maju, gunakan status API.
 
       await db.insert(
         'Surat_Tugas',
-        dataToInsert, // Gunakan data yang sudah disesuaikan statusnya
+        dataToInsert,
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     } catch (e) {

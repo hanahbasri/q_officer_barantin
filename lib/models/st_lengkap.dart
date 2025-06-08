@@ -17,6 +17,7 @@ class StLengkap {
   final List<Petugas> petugas;
   final List<Lokasi> lokasi;
   final List<Komoditas> komoditas;
+  final DateTime? tanggalSelesai;
 
   StLengkap({
     required this.idSuratTugas,
@@ -33,11 +34,13 @@ class StLengkap {
     required this.petugas,
     required this.lokasi,
     required this.komoditas,
+    this.tanggalSelesai,
   });
 
   StLengkap copyWith({
     String? status,
     String? jenisKarantina,
+    DateTime? tanggalSelesai,
   }) {
     return StLengkap(
       idSuratTugas: idSuratTugas,
@@ -54,7 +57,9 @@ class StLengkap {
       petugas: petugas,
       lokasi: lokasi,
       komoditas: komoditas,
+      tanggalSelesai: tanggalSelesai ?? this.tanggalSelesai,
     );
+
   }
 
   // Constructor untuk memparsing dari respons API
@@ -80,7 +85,8 @@ class StLengkap {
 
   // Constructor untuk memparsing dari database lokal
   factory StLengkap.fromDbMap(Map<String, dynamic> map,
-      List<Petugas> petugas, List<Lokasi> lokasi, List<Komoditas> komoditas) {
+      List<Petugas> petugas, List<Lokasi> lokasi, List<Komoditas> komoditas,
+      {DateTime? tanggalSelesai}) {
     return StLengkap(
       idSuratTugas: map['id_surat_tugas']?.toString() ?? '',
       noSt: map['no_st']?.toString() ?? '',
@@ -96,6 +102,7 @@ class StLengkap {
       petugas: petugas,
       lokasi: lokasi,
       komoditas: komoditas,
+      tanggalSelesai: tanggalSelesai,
     );
   }
 

@@ -226,9 +226,7 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
                   color: Colors.black87),
-              // overflow: TextOverflow.ellipsis, // REMOVED
             ),
-            // END OF MODIFIED
             trailing: const Icon(Icons.content_copy, size: 18, color: Colors.grey),
           ),
         ),
@@ -238,7 +236,6 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
 
   Widget _buildProfileHeader(
       String namaLengkap, String nip, String? uptName, BuildContext context) {
-    // MODIFIED: Removed email parameter
     return Container(
       width: double.infinity,
       padding: EdgeInsets.only(
@@ -342,8 +339,8 @@ class _AkunSayaPageState extends State<AkunSayaPage> {
     final authProvider = Provider.of<AuthProvider>(context);
     final namaLengkap = authProvider.userFullName ?? '';
     final nip = authProvider.userNip ?? '';
-    final email = authProvider.userEmail; // Can be null
-    final uptName = authProvider.userUptName; // Can be null
+    final email = authProvider.userEmail;
+    final uptName = authProvider.userUptName;
 
     return Scaffold(
       backgroundColor: Colors.white,
