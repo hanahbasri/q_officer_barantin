@@ -62,7 +62,6 @@ class StLengkap {
 
   }
 
-  // Constructor untuk memparsing dari respons API
   factory StLengkap.fromApiResponseMap(Map<String, dynamic> map,
       List<Petugas> petugas, List<Lokasi> lokasi, List<Komoditas> komoditas) {
     return StLengkap(
@@ -83,7 +82,6 @@ class StLengkap {
     );
   }
 
-  // Constructor untuk memparsing dari database lokal
   factory StLengkap.fromDbMap(Map<String, dynamic> map,
       List<Petugas> petugas, List<Lokasi> lokasi, List<Komoditas> komoditas,
       {DateTime? tanggalSelesai}) {

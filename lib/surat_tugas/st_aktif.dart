@@ -303,7 +303,6 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header Card dengan Title Surat Tugas (converted to dropdown)
               Card(
                 key: headerCardKey,
                 margin: const EdgeInsets.only(bottom: 16),
@@ -361,8 +360,6 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                           ],
                         ),
                       ),
-
-                      // Expanded content for header card
                       if (_isHeaderExpanded) ...[
                         Container(
                           width: double.infinity,
@@ -389,7 +386,6 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                                   if (kDebugMode) {
                                     print("🔗 LINK DITERIMA: $link");
                                   }
-
                                   if (link.isEmpty) {
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
@@ -398,12 +394,10 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                                     }
                                     return;
                                   }
-
                                   final url = link;
                                   if (kDebugMode) {
                                     print("🌐 URL: $url");
                                   }
-
                                   try {
                                     final success = await launchUrlString(url);
                                     if (!success && context.mounted) {
@@ -449,7 +443,6 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                 ),
               ),
 
-              // Card untuk Petugas - Dengan scrollbar vertikal
               Card(
                 key: petugasCardKey,
                 color: Colors.white,
@@ -462,7 +455,6 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Title section untuk petugas
                       Row(
                         children: [
                           const Icon(
@@ -502,8 +494,8 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
 
                       SizedBox(
                         height: widget.suratTugas.petugas.length > 2
-                            ? 200  // Fixed height when there are more than 2 officers
-                            : null, // Dynamic height for few officers
+                            ? 200
+                            : null,
                         child: Scrollbar(
                           thumbVisibility: true,
                           trackVisibility: true,
@@ -578,7 +570,6 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
 
               const SizedBox(height: 16),
 
-              // Card untuk Lokasi
               Card(
                 key: lokasiCardKey,
                 color: Colors.white,
@@ -729,9 +720,7 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                         }
                         return;
                       }
-
                       debugPrint("✅ Navigasi ke FormPeriksa dengan NIP: $userNip");
-
                       final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -743,7 +732,6 @@ class _SuratTugasAktifPageState extends State<SuratTugasAktifPage> {
                           ),
                         ),
                       );
-
                       if (result == true) {
                         if (mounted) {
                           Navigator.pop(context, true);

@@ -2,12 +2,11 @@ plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
-    id("com.google.gms.google-services") // ✅ ini udah diaktifin, bukan apply false
+    id("com.google.gms.google-services")
 }
 
 dependencies {
-    // ✅ Firebase BoM
-    implementation(platform("com.google.firebase:firebase-bom:33.12.0"))
+    implementation(platform("com.google.firebase:firebase-bom:33.15.0"))
 
     // ✅ Firebase Analytics (tanpa versi, karena pakai BoM)
     implementation("com.google.firebase:firebase-analytics")

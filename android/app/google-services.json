@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "105662278730",
-    "project_id": "q-officer-2025",
-    "storage_bucket": "q-officer-2025.firebasestorage.app"
+    "project_number": "895020386424",
+    "project_id": "q-officer",
+    "storage_bucket": "q-officer.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:105662278730:android:a00ac6794556b8865d0ab3",
+        "mobilesdk_app_id": "1:895020386424:android:b6211ecd6bc74a5a16458d",
         "android_client_info": {
           "package_name": "com.example.q_officer_barantin"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyAfr2dLNzR_H0WAJxUOteD7UB82DQpeKkE"
+          "current_key": "AIzaSyBxV0t8BHvoobfJkHmFGgSiph73-Gl0POQ"
         }
       ],
       "services": {

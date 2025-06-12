@@ -9,11 +9,13 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../databases/db_helper.dart';
 import 'form_periksa.dart';
 import 'package:uuid/uuid.dart';
+
 import 'package:q_officer_barantin/models/st_lengkap.dart';
 import 'package:q_officer_barantin/widgets/card_hasil_periksa.dart';
 import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
+
 import '../services/auth_provider.dart';
 import '../dialog/selesai_tugas_dialog.dart';
 import '../dialog/unsynced_dialog.dart';
@@ -127,7 +129,6 @@ class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderS
     }
   }
 
-
   void _initTutorial() {
     List<TargetFocus> currentTargets = _createTargets(hasHasilPeriksa: _hasilList.isNotEmpty);
     tutorialCoachMark = TutorialCoachMark(
@@ -160,7 +161,6 @@ class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderS
 
   void _showTutorial() {
     _initTutorial();
-
     if (tutorialCoachMark.targets.isEmpty) {
       debugPrint("[DetailLaporan Tutorial] No targets to display. Saving tutorial status.");
       _saveTutorialStatus();
@@ -169,7 +169,6 @@ class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderS
       }
       return;
     }
-
     if (mounted) {
       tutorialCoachMark.show(context: context);
     }
@@ -179,8 +178,6 @@ class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderS
     List<TargetFocus> targets = [];
     bool isSelesaiTutorial = widget.customTitle == "Surat Tugas Selesai";
     bool isActiveTaskTutorial = widget.showTutorialImmediately && !isSelesaiTutorial && !widget.isViewOnly;
-
-    // Target 1: Detail Surat Tugas
     if (suratTugasKey.currentContext != null) {
       targets.add(
         TargetFocus(
@@ -226,8 +223,6 @@ class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderS
         ),
       );
     }
-
-    // Target untuk Card Hasil Periksa
     if (hasHasilPeriksa && (widget.showDetailHasil || isActiveTaskTutorial) && cardHasilPeriksaKey.currentContext != null) {
       targets.add(
         TargetFocus(
@@ -276,8 +271,6 @@ class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderS
         ),
       );
     }
-
-    // Tombol Sinkronisasi
     if (hasHasilPeriksa && !widget.isViewOnly && !isSelesaiTutorial && tombolSinkronKey.currentContext != null) {
       targets.add(
         TargetFocus(
@@ -323,8 +316,6 @@ class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderS
         ),
       );
     }
-
-    // Tombol "Buat Laporan Pemeriksaan"
     if (!widget.isViewOnly && !isSelesaiTutorial && buatLaporanButtonKey.currentContext != null) {
       targets.add(
         TargetFocus(
@@ -369,8 +360,6 @@ class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderS
         ),
       );
     }
-
-    // Tombol "Selesai Tugas"
     if (!widget.isViewOnly && !isSelesaiTutorial && selesaiTugasButtonKey.currentContext != null) {
       targets.add(
         TargetFocus(
@@ -419,11 +408,11 @@ class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderS
     return targets;
   }
 
+
   Future<void> _monitorConnection() async {
     _subscription = Connectivity().onConnectivityChanged.listen((
         ConnectivityResult result) async {
       bool nowOffline = result == ConnectivityResult.none;
-
       if (_isOffline && !nowOffline) {
         if (mounted) {
           setState(() {
@@ -431,7 +420,6 @@ class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderS
             _showConnectionMessage = true;
           });
         }
-
         final ping = await getPingLatency();
         if (ping < 1000) {
           final db = DatabaseHelper();
@@ -442,7 +430,7 @@ class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderS
             if (userNip != null) {
               await db.syncUnsentData(userNip);
               if (mounted) {
-                _loadHasilPemeriksaan();
+                await _loadHasilPemeriksaan();
               }
             }
           }
@@ -460,14 +448,11 @@ class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderS
     });
   }
 
-
   Future<void> _loadHasilPemeriksaan() async {
     if (widget.idSuratTugas == null) return;
     final db = DatabaseHelper();
     final periksaListAsModel = await db.getHasilPemeriksaanById(widget.idSuratTugas!);
     final periksaList = periksaListAsModel.map((e) => e.toMap()).toList();
-
-
     if (mounted) {
       setState(() {
         _hasilList =
@@ -513,9 +498,7 @@ class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderS
   Widget build(BuildContext context) {
     final suratTugasData = widget.suratTugas;
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-
     final bool canNavigateOnCardTap = widget.customTitle == "Surat Tugas Selesai";
-
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -546,7 +529,6 @@ class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderS
                 tutorialKey = 'seen_detail_laporan_aktif_tutorial_v2';
               }
               await prefs.remove(tutorialKey);
-
               if (mounted) {
                 setState(() => _hasSeenTutorial = false);
                 _showTutorial();
@@ -762,7 +744,6 @@ class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderS
                                     );
                                     return;
                                   }
-
                                   final userNip = authProvider.userNip;
                                   if (userNip == null || userNip.isEmpty) {
                                     if(context.mounted) {
@@ -776,7 +757,6 @@ class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderS
                                     return;
                                   }
                                   if (widget.idSuratTugas == null) return;
-
                                   final result = await Navigator.push(
                                     context,
                                     MaterialPageRoute(
@@ -788,7 +768,6 @@ class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderS
                                       ),
                                     ),
                                   );
-
                                   if (result == true && mounted) {
                                     await _loadHasilPemeriksaan();
                                   }
@@ -843,7 +822,6 @@ class DetailLaporanState extends State<DetailLaporan> with SingleTickerProviderS
                                             );
                                           },
                                         );
-
                                         bool apiSuccess = false;
                                         try {
                                           apiSuccess = await HistoryApiService.sendTaskStatusUpdate(

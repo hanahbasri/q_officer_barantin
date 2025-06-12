@@ -26,7 +26,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 5, // Pastikan versi database sesuai dengan skema terakhir
+      version: 5,
       onCreate: (db, version) async {
         await _createTables(db);
       },
@@ -34,13 +34,10 @@ class DatabaseHelper {
         if (kDebugMode) {
           print('Upgrading database from $oldVersion to $newVersion');
         }
-        // Penanganan upgrade skema jika diperlukan
         if (oldVersion < 4) {
-          // Jika upgrade dari versi sebelum ada Master_Target_Temuan
           await _createMasterTargetTemuanTable(db);
         }
         if (oldVersion < 5) {
-          // Upgrade untuk tabel Dokumentasi_Periksa dari versi < 5
           await db.execute('DROP TABLE IF EXISTS Dokumentasi_Periksa');
           await db.execute('''
           CREATE TABLE Dokumentasi_Periksa (
@@ -183,103 +180,86 @@ class DatabaseHelper {
     }
   }
 
-    // Fungsi untuk menyimpan atau memperbarui data master target/temuan
-    Future<void> insertOrUpdateMasterTargetTemuan(String jenisKarantina, List<String> uraianList) async {
-      final db = await database;
-      try {
-        await db.insert(
-          'Master_Target_Temuan',
-          {
-            'jenis_karantina': jenisKarantina,
-            'uraian_list_json': jsonEncode(uraianList),
-            'last_sync_timestamp': DateTime.now().toIso8601String(),
+  Future<void> insertOrUpdateMasterTargetTemuan(String jenisKarantina, List<String> uraianList) async {
+    final db = await database;
+    try {
+      await db.insert(
+        'Master_Target_Temuan',
+        {
+          'jenis_karantina': jenisKarantina,
+          'uraian_list_json': jsonEncode(uraianList),
+          'last_sync_timestamp': DateTime.now().toIso8601String(),
           },
-          conflictAlgorithm: ConflictAlgorithm.replace, // Ganti jika sudah ada
-        );
-        if (kDebugMode) {
-          print('💾 Master Target/Temuan untuk "$jenisKarantina" disimpan/diperbarui.');
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print('❌ Error insert/update Master_Target_Temuan: $e');
-        }
-        rethrow;
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      if (kDebugMode) {
+        print('💾 Master Target/Temuan untuk "$jenisKarantina" disimpan/diperbarui.');
       }
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ Error insert/update Master_Target_Temuan: $e');
+      }
+      rethrow;
     }
+  }
 
-    // Fungsi untuk mengambil data master target/temuan dari DB lokal
-    Future<List<String>> getLocalMasterTargetTemuan(String jenisKarantina) async {
-      final db = await database;
-      try {
-        final List<Map<String, dynamic>> maps = await db.query(
-          'Master_Target_Temuan',
-          where: 'jenis_karantina = ?',
-          whereArgs: [jenisKarantina],
-        );
+  Future<List<String>> getLocalMasterTargetTemuan(String jenisKarantina) async {
+    final db = await database;
+    try {
+      final List<Map<String, dynamic>> maps = await db.query(
+        'Master_Target_Temuan',
+        where: 'jenis_karantina = ?',
+        whereArgs: [jenisKarantina],
+      );
 
-        if (maps.isNotEmpty) {
-          final String uraianListJson = maps.first['uraian_list_json'] as String;
-          if (uraianListJson.isNotEmpty) {
-            final List<dynamic> decodedList = jsonDecode(uraianListJson);
-            final List<String> stringList = decodedList.map((item) => item.toString()).toList();
-            if (kDebugMode) {
-              print('📦 Master Target/Temuan lokal ditemukan untuk "$jenisKarantina": ${stringList.length} item.');
-            }
-            return stringList;
-          } else {
-            if (kDebugMode) {
-              print('⚠️ Uraian list JSON kosong untuk "$jenisKarantina".');
-            }
-            return [];
+      if (maps.isNotEmpty) {final String uraianListJson = maps.first['uraian_list_json'] as String;
+        if (uraianListJson.isNotEmpty) {
+          final List<dynamic> decodedList = jsonDecode(uraianListJson);
+          final List<String> stringList = decodedList.map((item) => item.toString()).toList();
+          if (kDebugMode) {
+            print('📦 Master Target/Temuan lokal ditemukan untuk "$jenisKarantina": ${stringList.length} item.');
           }
+          return stringList;
+        } else {
+          if (kDebugMode) {
+            print('⚠️ Uraian list JSON kosong untuk "$jenisKarantina".');
+          }
+          return [];
+        }
         } else {
           if (kDebugMode) {
             print('ℹ️ Tidak ada Master Target/Temuan lokal untuk "$jenisKarantina".');
           }
           return [];
         }
-      } catch (e) {
-        if (kDebugMode) {
-          print('❌ Error getLocalMasterTargetTemuan: $e');
-        }
-        return [];
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ Error getLocalMasterTargetTemuan: $e');
       }
+      return [];
     }
+  }
 
   Future<void> syncSuratTugasFromApi(String nip) async {
     try {
       if (kDebugMode) {
         print('🔄 Starting sync for NIP: $nip');
       }
-
       if (nip.isEmpty) {
         if (kDebugMode) {
           print('❌ NIP kosong, tidak dapat melakukan sync');
         }
         throw Exception('NIP tidak boleh kosong untuk sync data');
       }
-
       final suratTugasList = await SuratTugasService.getAllSuratTugasByNip(nip);
-
       if (kDebugMode) {
         print('📋 Received ${suratTugasList.length} surat tugas from API');
       }
-
       for (var suratTugas in suratTugasList) {
         if (kDebugMode) {
           print('💾 Proses surat tugas: ${suratTugas.idSuratTugas}');
         }
 
-        // Hapus detail lama sebelum memasukkan yang baru untuk memastikan konsistensi jika API menghapus item
-        // await delete('Petugas', 'id_surat_tugas = ?', [suratTugas.idSuratTugas]);
-        // await delete('Lokasi', 'id_surat_tugas = ?', [suratTugas.idSuratTugas]);
-        // await delete('Komoditas', 'id_surat_tugas = ?', [suratTugas.idSuratTugas]);
-        // Catatan: Penghapusan di atas akan efektif jika API selalu mengirim set lengkap.
-        // Jika API hanya mengirim update delta, maka ConflictAlgorithm.replace pada child sudah cukup
-        // asalkan ID child (id_petugas, id_lokasi, id_komoditas) stabil.
-        // Untuk permintaan user saat ini (update card ST Masuk), ConflictAlgorithm.replace cukup.
-
-        // Simpan surat tugas
         await insertOrUpdateSuratTugas({
           'id_surat_tugas': suratTugas.idSuratTugas,
           'no_st': suratTugas.noSt,
@@ -294,7 +274,6 @@ class DatabaseHelper {
           'jenis_karantina': suratTugas.jenisKarantina ?? '',
         });
 
-        // Simpan petugas
         for (var petugas in suratTugas.petugas) {
           await insertOrUpdatePetugas({
             'id_petugas': petugas.idPetugas,
@@ -306,7 +285,6 @@ class DatabaseHelper {
           });
         }
 
-        // Simpan lokasi
         for (var lokasi in suratTugas.lokasi) {
           await insertOrUpdateLokasi({
             'id_lokasi': lokasi.idLokasi,
@@ -319,7 +297,6 @@ class DatabaseHelper {
           });
         }
 
-        // Simpan komoditas
         for (var komoditas in suratTugas.komoditas) {
           await insertOrUpdateKomoditas({
             'id_komoditas': komoditas.idKomoditas,
@@ -336,7 +313,6 @@ class DatabaseHelper {
           });
         }
       }
-
       if (kDebugMode) {
         print('✅ Sync sukses');
       }
@@ -356,26 +332,21 @@ class DatabaseHelper {
       String apiStatus = data['status']?.toString() ?? '';
       String apiJenisKarantina = data['jenis_karantina']?.toString() ?? '';
       String apiPtkId = data['ptk_id']?.toString() ?? '';
-
       final List<Map<String, dynamic>> existingTasks = await db.query(
         'Surat_Tugas',
         columns: ['status', 'jenis_karantina', 'ptk_id'],
         where: 'id_surat_tugas = ?',
         whereArgs: [idSuratTugas],
       );
-
       String localStatus = '';
       String localJenisKarantina = '';
       String localPtkId = '';
-
       if (existingTasks.isNotEmpty) {
         localStatus = existingTasks.first['status'] as String? ?? '';
         localJenisKarantina = existingTasks.first['jenis_karantina'] as String? ?? '';
         localPtkId = existingTasks.first['ptk_id'] as String? ?? '';
       }
-
       bool preferLocalStatus = false;
-      // PERBAIKAN: Tambahkan 'dikirim' ke dalam kondisi preferLocalStatus
       if ((localStatus == 'aktif' ||
           localStatus == 'dikirim' ||
           localStatus == 'tersimpan_offline' ||
@@ -385,9 +356,7 @@ class DatabaseHelper {
               apiStatus.isEmpty)) {
         preferLocalStatus = true;
       }
-
       Map<String, dynamic> dataToInsert = Map.from(data);
-
       if (preferLocalStatus) {
         dataToInsert['status'] = localStatus;
         if (kDebugMode) {
@@ -403,10 +372,8 @@ class DatabaseHelper {
               '🔄 DB_HELPER: Mengupdate status untuk ST ID: $idSuratTugas dari "$localStatus" menjadi "${dataToInsert['status']}"');
         }
       }
-
       dataToInsert['jenis_karantina'] = apiJenisKarantina.isNotEmpty ? apiJenisKarantina : localJenisKarantina;
       dataToInsert['ptk_id'] = apiPtkId.isNotEmpty ? apiPtkId : localPtkId;
-
       await db.insert(
         'Surat_Tugas',
         dataToInsert,
@@ -556,7 +523,6 @@ class DatabaseHelper {
     );
   }
 
-
   Future<List<Map<String, dynamic>>> getImageFromDatabase(String idPemeriksaan) async {
     try {
       final db = await database;
@@ -564,11 +530,10 @@ class DatabaseHelper {
 
       final List<Map<String, dynamic>> results = await db.query(
         'Dokumentasi_Periksa',
-        columns: ['id_foto', 'id_pemeriksaan', 'foto_display'], // Ambil foto_display
+        columns: ['id_foto', 'id_pemeriksaan', 'foto_display'],
         where: 'id_pemeriksaan = ?',
         whereArgs: [idPemeriksaan],
       );
-
       return results.map((row) {
         final newRow = Map<String, dynamic>.from(row);
         newRow['foto'] = newRow.remove('foto_display');
@@ -661,9 +626,7 @@ class DatabaseHelper {
       if (kDebugMode) {
         print('🔄 DatabaseHelper: Mengirim hasil pemeriksaan menggunakan SuratTugasService...');
       }
-
       bool success = await SuratTugasService.submitHasilPemeriksaan(hasil, photos, userNip);
-
       if (kDebugMode) {
         if (success) {
           print('✅ DatabaseHelper: Hasil pemeriksaan berhasil dikirim ke server');
@@ -671,7 +634,6 @@ class DatabaseHelper {
           print('❌ DatabaseHelper: Gagal mengirim hasil pemeriksaan ke server');
         }
       }
-
       return success;
     } catch (e) {
       if (kDebugMode) {
@@ -690,15 +652,11 @@ class DatabaseHelper {
         }
         return;
       }
-
       final db = await database;
       final data = await db.query('Hasil_Pemeriksaan', where: 'id_pemeriksaan = ?', whereArgs: [id]);
-
       if (data.isNotEmpty) {
         final hasilPemeriksaan = HasilPemeriksaan.fromMap(data.first);
-
         final photos = await loadServerImagesFromDb(id);
-
         if (kDebugMode) {
           print('🔄 Attempting to sync single data for ID: $id');
           print('📄 Hasil Pemeriksaan: ${hasilPemeriksaan.toString()}');
@@ -707,9 +665,7 @@ class DatabaseHelper {
             print('   - Foto Server ${i+1} (dari DB lokal untuk sync) size: ${photos[i].lengthInBytes} bytes');
           }
         }
-
         bool success = await sendHasilPemeriksaanToServer(hasilPemeriksaan, photos, userNip);
-
         if (success) {
           if (kDebugMode) print('✅ Server sync successful for ID: $id. Updating local syncdata status.');
           await db.update(
@@ -737,12 +693,9 @@ class DatabaseHelper {
         }
         return;
       }
-
       final db = await database;
       final unsynced = await db.query('Hasil_Pemeriksaan', where: 'syncdata = 0');
-
       if (kDebugMode) print('📊 Found ${unsynced.length} unsynced items for NIP: $userNip');
-
       for (final data in unsynced) {
         final id = data['id_pemeriksaan'];
         if (id != null && id.toString().isNotEmpty) {
@@ -751,7 +704,6 @@ class DatabaseHelper {
           if (kDebugMode) print('⚠️ Skipping data dengan id_pemeriksaan null/kosong: $data');
         }
       }
-
       if (kDebugMode) print('✅ Sync unsynced data completed for NIP: $userNip');
     } catch (e) {
       if (kDebugMode) print('❌ Exception dalam syncUnsentData: $e');
@@ -766,7 +718,6 @@ class DatabaseHelper {
         where: 'syncdata = 0',
         orderBy: 'tgl_periksa DESC',
       );
-
       return List.generate(maps.length, (i) {
         return HasilPemeriksaan.fromMap(maps[i]);
       });
@@ -787,7 +738,6 @@ class DatabaseHelper {
         where: 'id_pemeriksaan = ?',
         whereArgs: [idPemeriksaan],
       );
-
       if (kDebugMode) {
         print('✅ Update sync status untuk ID: $idPemeriksaan -> $syncStatus');
       }
@@ -811,7 +761,7 @@ class DatabaseHelper {
   Future<void> deleteDatabaseFile() async {
     final path = join(await getDatabasesPath(), 'app_database.db');
     await deleteDatabase(path);
-    _database = null; // Reset instance
+    _database = null;
     if (kDebugMode) {
       print('Database berhasil dihapus');
     }

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle; // Untuk rootBundle
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -7,8 +7,8 @@ import 'dart:io';
 import 'package:q_officer_barantin/models/role_detail.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:q_officer_barantin/databases/db_helper.dart';
-import 'package:html/parser.dart' show parse; // Untuk parsing HTML
-import 'package:html/dom.dart' as dom; // Untuk DOM HTML
+import 'package:html/parser.dart' show parse;
+import 'package:q_officer_barantin/services/surat_tugas_service.dart';
 
 class AuthKeys {
   static const authToken = "auth_token";
@@ -46,7 +46,7 @@ class AuthProvider with ChangeNotifier {
   String? get userPhotoPath => _userPhotoPath;
 
   bool get isLoggedIn => _isLoggedIn;
-  static Map<String, String> _uptDataMap = {};
+  static final Map<String, String> _uptDataMap = {};
 
   Future<void> _loadAndParseUptData() async {
     if (_uptDataMap.isNotEmpty) {
@@ -56,10 +56,8 @@ class AuthProvider with ChangeNotifier {
       final String htmlString = await rootBundle.loadString('dataUPT/master_upt.htm');
       var document = parse(htmlString);
       var table = document.querySelector('table');
-
       if (table != null) {
         var rows = table.querySelectorAll('tr');
-
         for (var i = 1; i < rows.length; i++) {
           var cells = rows[i].querySelectorAll('td');
           if (cells.length >= 4) {
@@ -91,7 +89,6 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  /// ✅ Cek status login dari local storage
   Future<void> checkLoginStatus() async {
     try {
       final token = await _secureStorage.read(key: AuthKeys.authToken);
@@ -105,13 +102,10 @@ class AuthProvider with ChangeNotifier {
         nip = await _secureStorage.read(key: AuthKeys.nip) ?? "";
         userFullName = await _secureStorage.read(key: AuthKeys.fullName) ?? "";
         userEmail = await _secureStorage.read(key: AuthKeys.email) ?? "";
-
         nik = await _secureStorage.read(key: AuthKeys.nik);
         idPegawai = await _secureStorage.read(key: AuthKeys.idPegawai);
         upt = await _secureStorage.read(key: AuthKeys.upt);
-
         await _resolveUserUptName();
-
         final detilJson = await _secureStorage.read(key: AuthKeys.userRoles);
         if (detilJson != null) {
           try {
@@ -126,17 +120,14 @@ class AuthProvider with ChangeNotifier {
             userRoles = [];
           }
         }
-
         _userPhotoPath = await _secureStorage.read(key: AuthKeys.userPhotoPath);
       }
-
       notifyListeners();
     } catch (e) {
       debugPrint("❌ Error saat cek login: $e");
     }
   }
 
-  /// ✅ Login user
   Future<bool> login(String username, String password) async {
     try {
       final response = await http.post(
@@ -148,38 +139,29 @@ class AuthProvider with ChangeNotifier {
       if (response.statusCode == 200) {
         final jsonData = json.decode(response.body);
         final userData = jsonData["data"];
-
         if (jsonData["status"] == "200" && userData != null) {
           accessToken = userData["accessToken"];
           uid = userData["uid"];
           userName = userData["uname"];
           userFullName = userData["nama"];
-
           userId = userData["uid"];
           nip = userData["nip"];
-
           userEmail = userData["email"];
-
           nik = userData["nik"];
           idPegawai = userData["idpegawai"];
           upt = userData["upt"]?.toString();
-
           await _resolveUserUptName();
-
           final detilList = userData["detil"];
-
           if (detilList is List) {
             userRoles = detilList
                 .map((e) => RoleDetail.fromJson(e as Map<String, dynamic>))
                 .toList();
           }
-
           debugPrint("🔍 FIXED Login parsing:");
           debugPrint("   - userId (uid): $userId");
           debugPrint("   - nip: $nip");
           debugPrint("   - userName: $userName");
           debugPrint("   - userFullName: $userFullName");
-
           await _secureStorage.write(key: AuthKeys.authToken, value: accessToken);
           await _secureStorage.write(key: AuthKeys.uid, value: uid);
           await _secureStorage.write(key: AuthKeys.username, value: userName);
@@ -190,25 +172,20 @@ class AuthProvider with ChangeNotifier {
           await _secureStorage.write(key: AuthKeys.nik, value: nik);
           await _secureStorage.write(key: AuthKeys.idPegawai, value: idPegawai);
           await _secureStorage.write(key: AuthKeys.upt, value: upt);
-          await _secureStorage.write(
-              key: AuthKeys.userRoles, value: jsonEncode(detilList));
-
+          await _secureStorage.write(key: AuthKeys.userRoles, value: jsonEncode(detilList));
           _userPhotoPath = await _secureStorage.read(key: AuthKeys.userPhotoPath);
-
           _isLoggedIn = true;
-
           if (nip != null && nip!.isNotEmpty) {
             try {
               final dbHelper = DatabaseHelper();
               await dbHelper.syncSuratTugasFromApi(nip!);
               debugPrint("✅ Surat tugas berhasil disync setelah login dengan NIP: $nip");
+              _precacheMasterData();
             } catch (e) {
               debugPrint("❌ Error sync surat tugas setelah login: $e");
             }
           }
-
           await sendFcmTokenToServer();
-
           notifyListeners();
           return true;
         }
@@ -223,7 +200,6 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  /// ✅ Kirim token FCM ke server
   Future<void> sendFcmTokenToServer() async {
     try {
       final fcmToken = await FirebaseMessaging.instance.getToken();
@@ -231,15 +207,12 @@ class AuthProvider with ChangeNotifier {
         debugPrint("❌ FCM token tidak tersedia atau kosong");
         return;
       }
-
       debugPrint("📲 Mengirim FCM token ke server: $fcmToken");
       debugPrint("🔍 FCM Token length: ${fcmToken.length}");
-
       if (nip == null || nip!.isEmpty) {
         debugPrint("❌ NIP tidak tersedia");
         return;
       }
-
       final requestBody = <String, dynamic>{
         "uid": uid!.trim(),
         "uname": (userName ?? "").trim(),
@@ -251,13 +224,11 @@ class AuthProvider with ChangeNotifier {
         "upt": int.tryParse(upt?.toString() ?? "1000") ?? 1000,
         "token": fcmToken.trim(),
       };
-
       debugPrint("📤 FCM request body: ${json.encode(requestBody)}");
       debugPrint("🔍 Data validation:");
       debugPrint("   - uid: '${requestBody['uid']}'");
       debugPrint("   - nip: '${requestBody['nip']}'");
       debugPrint("   - token length: ${fcmToken.trim().length}");
-
       final response = await http.post(
         Uri.parse('https://esps.karantinaindonesia.go.id/api-officer/tokenFCM'),
         headers: {
@@ -267,10 +238,8 @@ class AuthProvider with ChangeNotifier {
         },
         body: json.encode(requestBody),
       );
-
       debugPrint("🌐 FCM Response Status: ${response.statusCode}");
       debugPrint("🌐 FCM Response Body: ${response.body}");
-
       if (response.statusCode == 200) {
         try {
           final responseData = json.decode(response.body) as Map<String, dynamic>;
@@ -295,12 +264,32 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  /// ✅ Logout
+  Future<void> _precacheMasterData() async {
+    final dbHelper = DatabaseHelper();
+    final List<String> quarantineTypes = ['H', 'T', 'I'];
+
+    debugPrint("🔥 Memulai precaching data master Target/Temuan...");
+
+    for (String type in quarantineTypes) {
+      try {
+        final apiData = await SuratTugasService.getTargetUjiData(type, 'uraian');
+        if (apiData.isNotEmpty) {
+          await dbHelper.insertOrUpdateMasterTargetTemuan(type, apiData);
+          debugPrint("✅ Precache berhasil untuk jenis karantina: $type");
+        } else {
+          debugPrint("⚠️ Tidak ada data dari API untuk jenis karantina: $type (saat precache)");
+        }
+      } catch (e) {
+        debugPrint("❌ Gagal precache untuk jenis karantina '$type'. Error: $e");
+      }
+    }
+    debugPrint("✅ Selesai precaching data master.");
+  }
+
   Future<void> logout() async {
     try {
       final lastPhoto = _userPhotoPath;
       await _secureStorage.deleteAll();
-
       _isLoggedIn = false;
       userName = null;
       userId = null;
@@ -314,14 +303,12 @@ class AuthProvider with ChangeNotifier {
       idPegawai = null;
       upt = null;
       userUptName = null;
-
       if (lastPhoto != null) {
         await _secureStorage.write(key: AuthKeys.userPhotoPath, value: lastPhoto);
         _userPhotoPath = lastPhoto;
       } else {
         _userPhotoPath = null;
       }
-
       debugPrint("✅ Logout berhasil untuk user yang keluar");
       notifyListeners();
     } catch (e) {
@@ -348,9 +335,6 @@ class AuthProvider with ChangeNotifier {
     }
     notifyListeners();
   }
-
   List<String> getRoleNames() => userRoles.map((e) => e.roleName).toList();
-
-  /// ✅ Getter untuk NIP (untuk submit hasil pemeriksaan)
   String? get userNip => nip;
 }

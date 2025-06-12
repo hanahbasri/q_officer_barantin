@@ -353,15 +353,14 @@ class _HasilPeriksaCardState extends State<HasilPeriksaCard> {
                     ],
                   ),
 
-                  // BAGIAN TOMBOL SINKRONISASI
                   if (widget.showSync) ...[
-                    const Divider(height: 24, thickness: 0.5), // Garis pemisah
+                    const Divider(height: 24, thickness: 0.5),
                     Align(
-                      alignment: Alignment.bottomRight, // Posisikan tombol di kanan bawah
+                      alignment: Alignment.bottomRight,
                       child: OutlinedButton.icon(
-                        key: widget.syncButtonKey, // Terapkan kunci untuk tutorial
+                        key: widget.syncButtonKey,
                         onPressed: isSynced || _isSyncing
-                            ? null // Nonaktifkan tombol jika sudah sinkron atau sedang proses
+                            ? null
                             : () async {
                           if (mounted) setState(() => _isSyncing = true);
                           if (widget.onSyncPressed != null) await widget.onSyncPressed!();

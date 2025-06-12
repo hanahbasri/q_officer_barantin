@@ -4,6 +4,8 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:q_officer_barantin/q_declare/barang_bawaan.dart';
+import 'package:q_officer_barantin/q_declare/q_declare.dart';
 import 'package:q_officer_barantin/surat_tugas/surat_tugas.dart';
 
 import 'services/notification_service.dart';
@@ -116,6 +118,8 @@ class MyApp extends StatelessWidget {
         '/notif-detail': (context) => const NotifDetailScreen(),
         '/notif-history': (context) => const NotifHistoryScreen(),
         '/surat-tugas': (context) => SuratTugasPage(),
+        '/q-declare': (context) => const QDeclareScreen(),
+        '/barang-bawaan': (context) => const BarangBawaanScreen(),
       },
     );
   }

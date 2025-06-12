@@ -95,48 +95,56 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Scaffold(
       drawer: const SideBar(),
       body: Consumer<AuthProvider>(
-        builder: (context, auth, _) {
-          if (!auth.isLoggedIn) {
-            return const Center(child: CircularProgressIndicator(color: Color(0xFF8D6E63)));
-          }
+          builder: (context, auth, _) {
+            if (!auth.isLoggedIn) {
+              return const Center(child: CircularProgressIndicator(color: Color(0xFF8D6E63)));
+            }
 
-          final userName = auth.userFullName ?? "User";
+            final userName = auth.userFullName ?? "User";
 
-          return CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              _buildAppBar(context),
-              SliverToBoxAdapter(child: _buildWelcomeSection(userName)),
-              SliverToBoxAdapter(child: _buildMenuHeader()),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                sliver: SliverGrid(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: 1.4,
+            return CustomScrollView(
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                _buildAppBar(context),
+                SliverToBoxAdapter(child: _buildWelcomeSection(userName)),
+                SliverToBoxAdapter(child: _buildMenuHeader()),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  sliver: SliverGrid(
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childAspectRatio: 1.4,
+                    ),
+                    delegate: SliverChildListDelegate([
+                      _buildMenuCard(
+                        icon: 'images/pk_icon.png',
+                        title: 'Pemeriksaan\nLapangan',
+                        onTap: () {
+                          Navigator.pushNamed(context, '/surat-tugas');
+                        },
+                      ),
+
+                      _buildMenuCard(
+                        icon: 'images/icon_qdc.png',
+                        title: 'Q-Declare',
+                        onTap: () {
+                          Navigator.pushNamed(context, '/q-declare');
+                        },
+                      ),
+                      _buildMenuCard(
+                        icon: 'images/plus_icon.png',
+                        title: 'Lainnya',
+                        onTap: _showEmptyFeatureDialog,
+                        isDashed: true,
+                      ),
+                    ]),
                   ),
-                  delegate: SliverChildListDelegate([
-                    _buildMenuCard(
-                      icon: 'images/pk_icon.png',
-                      title: 'Pemeriksaan\nLapangan',
-                      onTap: () {
-                        Navigator.pushNamed(context, '/surat-tugas');
-                      },
-                    ),
-                    _buildMenuCard(
-                      icon: 'images/plus_icon.png',
-                      title: 'Lainnya',
-                      onTap: _showEmptyFeatureDialog,
-                      isDashed: true,
-                    ),
-                  ]),
                 ),
-              ),
-            ],
-          );
-        },
+              ],
+            );
+          }
       ),
     );
   }

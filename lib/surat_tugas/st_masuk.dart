@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:q_officer_barantin/services/history_service.dart';
+import 'package:q_officer_barantin/surat_tugas/st_aktif.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 import '../main.dart';
 import 'periksa_lokasi.dart';
@@ -279,7 +280,6 @@ class SuratTugasTertundaState extends State<SuratTugasTertunda> {
         ],
       ),
     );
-
     return targets;
   }
 
@@ -292,8 +292,8 @@ class SuratTugasTertundaState extends State<SuratTugasTertunda> {
       appBar: AppBar(
         title: Text(
           widget.showTutorialImmediately
-              ? "Tutorial - Surat Tugas Tertunda"
-              : "Surat Tugas Tertunda",
+              ? "Tutorial - Surat Tugas Masuk"
+              : "Surat Tugas Masuk",
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: const Color(0xFF522E2E),
@@ -781,15 +781,22 @@ class SuratTugasTertundaState extends State<SuratTugasTertunda> {
                         }
                       }
 
-                      if (mounted) Navigator.pop(context); // Pop loading dialog
+                      if (mounted) Navigator.pop(context);
 
                       if (apiSuccess) {
                         await widget.onTerimaTugas();
-                        // --- TAMBAHKAN BARIS INI ---
                         if (mounted) {
-                          Navigator.pop(context); // Tutup halaman SuratTugasTertunda
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => SuratTugasAktifPage(
+                                idSuratTugas: widget.suratTugas.idSuratTugas,
+                                suratTugas: widget.suratTugas.copyWith(status: 'aktif'),
+                                onSelesaiTugas: () {},
+                              ),
+                            ),
+                          );
                         }
-                        // --------------------------
                       } else {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(

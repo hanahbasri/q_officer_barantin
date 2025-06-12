@@ -48,6 +48,8 @@ dependencies:
   smooth_page_indicator: ^1.1.0
   flutter_image_compress: ^2.4.0
   html: ^0.15.6
+  mobile_scanner: ^7.0.1
+  image: ^4.1.7
 
 
 
@@ -72,6 +74,7 @@ flutter:
     - images/pk_icon.png
     - images/not_found.png
     - images/logo_apk.png
+    - images/icon_qdc.png
     - dataUPT/master_upt.htm
 
 fonts:

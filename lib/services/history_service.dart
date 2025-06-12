@@ -12,7 +12,7 @@ class HistoryApiService {
   static const String _apiToken = 'Basic bXJpZHdhbjpaPnV5JCx+NjR7KF42WDQm'; // Token otorisasi Anda
 
   static Future<bool> sendTaskStatusUpdate({
-    required BuildContext context, // Tambahkan BuildContext
+    required BuildContext context,
     required String idSuratTugas,
     required String status, // "terima" atau "selesai"
     required String keterangan,
@@ -29,10 +29,7 @@ class HistoryApiService {
       );
       return false;
     }
-
-    // Dapatkan id_petugas berdasarkan NIP pengguna dan idSuratTugas
     final String? idPetugas = await SuratTugasService.getIdPetugasByNip(userNip, idSuratTugas); //
-
     if (idPetugas == null || idPetugas.isEmpty) {
       if (kDebugMode) {
         print('Error: id_petugas tidak ditemukan untuk NIP $userNip dan ST $idSuratTugas.');
@@ -48,12 +45,11 @@ class HistoryApiService {
       'Authorization': _apiToken,
     };
 
-    // Waktu saat ini diformat
     final String currentTime = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
     final body = json.encode({
       "id_surat_tugas": idSuratTugas,
-      "id_petugas": idPetugas, // Gunakan idPetugas yang didapatkan
+      "id_petugas": idPetugas,
       "status": status,
       "keterangan": keterangan,
       "time": currentTime,
@@ -80,7 +76,6 @@ class HistoryApiService {
       }
 
       if (response.statusCode == 200) {
-        // Coba parse respons JSON jika ada
         try {
           final decodedResponse = json.decode(responseString);
           if (decodedResponse is Map && decodedResponse['status'] == true) {
@@ -98,12 +93,10 @@ class HistoryApiService {
             return false;
           }
         } catch (e) {
-          // Jika parsing JSON gagal, tetapi status code 200, anggap berhasil jika tidak ada pesan error spesifik.
-          // Atau, Anda bisa lebih ketat di sini.
           if (kDebugMode) {
             print('Status tugas berhasil dikirim ke API (respons bukan JSON valid, tapi status 200).');
           }
-          return true; // Anggap berhasil jika status 200 dan tidak ada error parsing yang kritis
+          return true;
         }
       } else {
         if (kDebugMode) {

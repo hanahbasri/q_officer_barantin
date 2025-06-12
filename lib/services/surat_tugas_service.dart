@@ -15,10 +15,10 @@ class SuratTugasService {
   static const String baseUrl = 'https://esps.karantinaindonesia.go.id/api-officer';
   static const String authHeader = 'Basic bXJpZHdhbjpaPnV5JCx+NjR7KF42WDQm';
 
-  // FIXED: Sinkronisasi dengan batas ukuran di FormPeriksa (100KB)
-  static const int MAX_PAYLOAD_SIZE_BYTES = 100 * 1024; // 100KB
+  static const int MAX_PAYLOAD_SIZE_BYTES = 100 * 1024;
 
-  static Future<StLengkap?> getSuratTugasByNip(String nip) async {
+  // Ubah nama fungsi dan tipe kembaliannya untuk mencerminkan bahwa ia mengambil BANYAK surat tugas
+  static Future<List<StLengkap>> getAllSuratTugasByNip(String nip) async {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/surtug?nip=$nip'),
@@ -29,72 +29,91 @@ class SuratTugasService {
       );
 
       if (kDebugMode) {
-        print('🌐 API Response Status (getSuratTugasByNip): ${response.statusCode}');
+        print('🌐 API Response Status (getAllSuratTugasByNip): ${response.statusCode}');
       }
 
       if (response.statusCode == 200) {
         final jsonData = json.decode(response.body);
 
-        if (jsonData['status'] == true && jsonData['data'] != null) {
-          final data = jsonData['data'];
+        // Pengecekan status dan data tetap sama
+        if (jsonData['status'] == true && jsonData['data'] != null && jsonData['data'] is List) {
 
-          List<Komoditas> komoditasList = [];
-          if (data['komoditas'] != null && data['komoditas'] is List) {
-            try {
-              komoditasList = (data['komoditas'] as List)
-                  .map((k) => Komoditas.fromApiResponseMap(k as Map<String, dynamic>))
-                  .toList();
-            } catch (e) {
-              if (kDebugMode) {
-                print('❌ Error parsing komoditas from API: $e');
+          // 1. jsonData['data'] adalah List, kita cast sebagai List<dynamic>
+          final List<dynamic> allSuratTugasData = jsonData['data'];
+
+          // 2. Kita buat list kosong untuk menampung hasil parsing
+          final List<StLengkap> hasilAkhir = [];
+
+          // 3. Looping setiap item di dalam list data dari API
+          for (var stData in allSuratTugasData) {
+            // 'stData' sekarang adalah Map<String, dynamic> untuk satu surat tugas
+            final Map<String, dynamic> suratTugasMap = stData as Map<String, dynamic>;
+
+            // Logika parsing untuk komoditas, petugas, dan lokasi sekarang
+            // diterapkan pada setiap item surat tugas di dalam loop.
+            List<Komoditas> komoditasList = [];
+            if (suratTugasMap['komoditas'] != null && suratTugasMap['komoditas'] is List) {
+              try {
+                komoditasList = (suratTugasMap['komoditas'] as List)
+                    .map((k) => Komoditas.fromApiResponseMap(k as Map<String, dynamic>))
+                    .toList();
+              } catch (e) {
+                if (kDebugMode) {
+                  print('❌ Error parsing komoditas from API: $e');
+                }
               }
             }
-          }
 
-          List<Petugas> petugasList = [];
-          if (data['petugas'] != null && data['petugas'] is List) {
-            try {
-              petugasList = (data['petugas'] as List)
-                  .map((p) => Petugas.fromApiResponseMap(p as Map<String, dynamic>))
-                  .toList();
-            } catch (e) {
-              if (kDebugMode) {
-                print('❌ Error parsing petugas from API: $e');
+            List<Petugas> petugasList = [];
+            if (suratTugasMap['petugas'] != null && suratTugasMap['petugas'] is List) {
+              try {
+                petugasList = (suratTugasMap['petugas'] as List)
+                    .map((p) => Petugas.fromApiResponseMap(p as Map<String, dynamic>))
+                    .toList();
+              } catch (e) {
+                if (kDebugMode) {
+                  print('❌ Error parsing petugas from API: $e');
+                }
               }
             }
-          }
 
-          List<Lokasi> lokasiList = [];
-          if (data['lokasi'] != null && data['lokasi'] is List) {
-            try {
-              lokasiList = (data['lokasi'] as List)
-                  .map((l) => Lokasi.fromApiResponseMap(l as Map<String, dynamic>))
-                  .toList();
-            } catch (e) {
-              if (kDebugMode) {
-                print('❌ Error parsing lokasi from API: $e');
+            List<Lokasi> lokasiList = [];
+            if (suratTugasMap['lokasi'] != null && suratTugasMap['lokasi'] is List) {
+              try {
+                lokasiList = (suratTugasMap['lokasi'] as List)
+                    .map((l) => Lokasi.fromApiResponseMap(l as Map<String, dynamic>))
+                    .toList();
+              } catch (e) {
+                if (kDebugMode) {
+                  print('❌ Error parsing lokasi from API: $e');
+                }
               }
             }
+
+            // Buat objek StLengkap dari data yang sudah diparsing
+            final stLengkap = StLengkap.fromApiResponseMap(
+                suratTugasMap, petugasList, lokasiList, komoditasList);
+
+            // Tambahkan ke list hasil akhir
+            hasilAkhir.add(stLengkap);
           }
-          return StLengkap.fromApiResponseMap(
-              data as Map<String, dynamic>, petugasList, lokasiList, komoditasList);
+
+          // 4. Kembalikan list yang sudah berisi semua surat tugas
+          return hasilAkhir;
+
         } else {
           if (kDebugMode) {
-            print('❌ API response status false or data null (getSuratTugasByNip)');
+            print('❌ API response status false or data is not a List (getAllSuratTugasByNip)');
           }
         }
       } else {
-        debugPrint('❌ Error API (getSuratTugasByNip): ${response.statusCode} - ${response.reasonPhrase}');
+        debugPrint('❌ Error API (getAllSuratTugasByNip): ${response.statusCode} - ${response.reasonPhrase}');
       }
     } catch (e) {
       debugPrint('❌ Exception saat fetch surat tugas: $e');
     }
-    return null;
-  }
-
-  static Future<List<StLengkap>> getAllSuratTugasByNip(String nip) async {
-    final suratTugas = await getSuratTugasByNip(nip);
-    return suratTugas != null ? [suratTugas] : [];
+    // Jika terjadi error, kembalikan list kosong
+    return [];
   }
 
   static Future<List<String>> getTargetUjiData(String? jenisKarantina, String fieldToExtract) async {
@@ -147,10 +166,8 @@ class SuratTugasService {
         }
         return null;
       }
-
       final dbHelper = DatabaseHelper();
       final petugasListMap = await dbHelper.getPetugasById(idSuratTugas);
-
       for (var petugasMap in petugasListMap) {
         final petugas = Petugas.fromDbMap(petugasMap);
         if (petugas.nipPetugas == userNip) {
@@ -160,7 +177,6 @@ class SuratTugasService {
           return petugas.idPetugas;
         }
       }
-
       if (kDebugMode) {
         print('❌ Tidak ditemukan petugas dengan NIP: $userNip untuk ST ID: $idSuratTugas di DB lokal.');
       }
@@ -178,7 +194,6 @@ class SuratTugasService {
     int estimatedBase64Size = (totalCompressedSize * 4 / 3).ceil();
     int estimatedJsonOverhead = 2000 + (photos.length * 150);
     int totalEstimatedPayload = estimatedBase64Size + estimatedJsonOverhead;
-
     if (kDebugMode) {
       print("🔍 Validasi ukuran payload di Service:");
       print("   - Jumlah foto: ${photos.length}");
@@ -187,9 +202,9 @@ class SuratTugasService {
       print("   - Total estimasi payload: $totalEstimatedPayload bytes (${(totalEstimatedPayload / 1024).toStringAsFixed(2)} KB)");
       print("   - Batas maksimal: ${(MAX_PAYLOAD_SIZE_BYTES / 1024).toStringAsFixed(2)} KB");
     }
-
     return totalEstimatedPayload <= MAX_PAYLOAD_SIZE_BYTES;
   }
+
   static Future<bool> submitHasilPemeriksaan(
       HasilPemeriksaan hasil,
       List<Uint8List> compressedPhotos,
@@ -197,49 +212,37 @@ class SuratTugasService {
       ) async {
     const int maxRetries = 3;
     int currentAttempt = 0;
-
     while (currentAttempt < maxRetries) {
       currentAttempt++;
-
       try {
         if (kDebugMode) {
           print('🔄 Mencoba mengirim data (percobaan ke-$currentAttempt dari $maxRetries)...');
         }
-
-        // Validasi awal
         if (userNip.isEmpty) {
           if (kDebugMode) {
             print('❌ GAGAL (submitHasilPemeriksaan): userNip kosong.');
           }
           return false;
         }
-
         if (compressedPhotos.isEmpty) {
           if (kDebugMode) {
             print('❌ GAGAL (submitHasilPemeriksaan): Tidak ada foto untuk dikirim.');
           }
           return false;
         }
-
-        // Validasi ukuran payload
         if (!_validatePayloadSize(compressedPhotos)) {
           if (kDebugMode) {
             print('❌ GAGAL: Payload terlalu besar (>${(MAX_PAYLOAD_SIZE_BYTES / 1024).toStringAsFixed(0)}KB). Kurangi ukuran/jumlah foto.');
           }
           return false;
         }
-
-        // Get ID Petugas
         String? idPetugas = await getIdPetugasByNip(userNip, hasil.idSuratTugas);
-
         if (idPetugas == null || idPetugas.isEmpty) {
           if (kDebugMode) {
             print('❌ GAGAL (submitHasilPemeriksaan): id_petugas tidak ditemukan untuk NIP: $userNip, ST ID: ${hasil.idSuratTugas}.');
           }
           return false;
         }
-
-        // Encode photos to base64
         List<String> base64Photos = [];
         try {
           for (int i = 0; i < compressedPhotos.length; i++) {
@@ -255,8 +258,6 @@ class SuratTugasService {
           }
           return false;
         }
-
-        // Format tanggal
         String formattedTglPeriksa = hasil.tanggal;
         try {
           DateTime parsedDate;
@@ -273,7 +274,6 @@ class SuratTugasService {
           formattedTglPeriksa = DateFormat("yyyy-MM-ddTHH:mm:ss").format(DateTime.now());
         }
 
-        // Siapkan data untuk server
         final Map<String, dynamic> payload = {
           'id': hasil.idPemeriksaan.trim(),
           'id_surat_tugas': hasil.idSuratTugas.trim(),
@@ -288,8 +288,6 @@ class SuratTugasService {
           'attachment': base64Photos,
           'id_petugas': idPetugas.trim(),
         };
-
-        // Tambahkan catatan jika ada
         if (hasil.catatan != null && hasil.catatan!.trim().isNotEmpty) {
           payload['catatan'] = hasil.catatan!.trim();
         }
@@ -332,12 +330,9 @@ class SuratTugasService {
           print('🌐 API Submit Response: ${response.body}');
         }
 
-        // Handle status code yang benar
         if (response.statusCode >= 200 && response.statusCode < 300) {
           try {
             final responseData = json.decode(response.body);
-
-            // Periksa status dalam response body
             if (responseData is Map<String, dynamic>) {
               if (responseData.containsKey('status')) {
                 if (responseData['status'] == true ||
@@ -365,20 +360,17 @@ class SuratTugasService {
                 return false;
               }
             }
-
             if (kDebugMode) {
               print('⚠️ Format response tidak dikenal, tapi status code sukses');
               print('🔢 Status Code: ${response.statusCode}');
             }
             return true;
-
           } catch (e) {
             if (kDebugMode) {
               print('❌ Error parsing response JSON: $e');
               print('📄 Raw response: ${response.body}');
               print('🔢 Status Code: ${response.statusCode}');
             }
-            // Jika JSON parsing gagal tapi status code sukses, anggap berhasil
             return true;
           }
         }
@@ -404,7 +396,6 @@ class SuratTugasService {
             }
             return false;
           }
-
           await Future.delayed(Duration(seconds: currentAttempt * 2));
           continue;
         }
@@ -415,7 +406,6 @@ class SuratTugasService {
           }
           return false;
         }
-
       } on TimeoutException catch (e) {
         if (kDebugMode) {
           print('⏰ Timeout pada percobaan ke-$currentAttempt: $e');
