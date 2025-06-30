@@ -1,16 +1,1 @@
-# q_officer_barantin
-
-A new Flutter project.
-
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Q – Officer merupakan aplikasi mobile yang dirancang khusus untuk mendukung tugas para petugas karantina (Quarantine Officer) dalam mengelola surat tugas, mulai dari proses penerimaan, pelaksanaan pemeriksaan, hingga pelaporan dan penyelesaiannya. Aplikasi ini dikembangkan sebagai bagian dari upaya digitalisasi proses pelaporan hasil pemeriksaan karantina, guna meningkatkan efisiensi dan akurasi kerja petugas di lapangan. 
