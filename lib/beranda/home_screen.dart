@@ -241,26 +241,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           const SizedBox(height: 4),
           Text('Siap memulai hari yang produktif?', style: TextStyle(fontSize: 14, color: Colors.grey[600])),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              ElevatedButton.icon(
-                onPressed: () {
-                  NotificationService.testNotification(
-                    title: 'Tes Notifikasi',
-                    body: 'Ini adalah body dari tes notifikasi',
-                  );
-                },
-                icon: const Icon(Icons.notifications_active, size: 18),
-                label: const Text('Test Notif'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF8D6E63),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  textStyle: const TextStyle(fontSize: 12),
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );

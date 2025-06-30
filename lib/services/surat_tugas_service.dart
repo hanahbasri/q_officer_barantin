@@ -17,7 +17,6 @@ class SuratTugasService {
 
   static const int MAX_PAYLOAD_SIZE_BYTES = 100 * 1024;
 
-  // Ubah nama fungsi dan tipe kembaliannya untuk mencerminkan bahwa ia mengambil BANYAK surat tugas
   static Future<List<StLengkap>> getAllSuratTugasByNip(String nip) async {
     try {
       final response = await http.get(
@@ -35,22 +34,15 @@ class SuratTugasService {
       if (response.statusCode == 200) {
         final jsonData = json.decode(response.body);
 
-        // Pengecekan status dan data tetap sama
         if (jsonData['status'] == true && jsonData['data'] != null && jsonData['data'] is List) {
 
-          // 1. jsonData['data'] adalah List, kita cast sebagai List<dynamic>
           final List<dynamic> allSuratTugasData = jsonData['data'];
 
-          // 2. Kita buat list kosong untuk menampung hasil parsing
           final List<StLengkap> hasilAkhir = [];
 
-          // 3. Looping setiap item di dalam list data dari API
           for (var stData in allSuratTugasData) {
-            // 'stData' sekarang adalah Map<String, dynamic> untuk satu surat tugas
             final Map<String, dynamic> suratTugasMap = stData as Map<String, dynamic>;
 
-            // Logika parsing untuk komoditas, petugas, dan lokasi sekarang
-            // diterapkan pada setiap item surat tugas di dalam loop.
             List<Komoditas> komoditasList = [];
             if (suratTugasMap['komoditas'] != null && suratTugasMap['komoditas'] is List) {
               try {
@@ -90,15 +82,10 @@ class SuratTugasService {
               }
             }
 
-            // Buat objek StLengkap dari data yang sudah diparsing
             final stLengkap = StLengkap.fromApiResponseMap(
                 suratTugasMap, petugasList, lokasiList, komoditasList);
-
-            // Tambahkan ke list hasil akhir
             hasilAkhir.add(stLengkap);
           }
-
-          // 4. Kembalikan list yang sudah berisi semua surat tugas
           return hasilAkhir;
 
         } else {
@@ -112,7 +99,6 @@ class SuratTugasService {
     } catch (e) {
       debugPrint('❌ Exception saat fetch surat tugas: $e');
     }
-    // Jika terjadi error, kembalikan list kosong
     return [];
   }
 

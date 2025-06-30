@@ -610,7 +610,6 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
     }
   }
 
-  // GANTI FUNGSI LAMA DENGAN YANG INI
   Future<Uint8List?> _addTimestampToPhoto({
     required Uint8List imageBytes,
     String? customText,
@@ -623,16 +622,13 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
         throw Exception('Gagal decode gambar');
       }
 
-      // --- PERUBAHAN 1: Perhitungan Ukuran & Posisi yang Lebih Baik ---
       final int imageWidth = originalImage.width;
       final int imageHeight = originalImage.height;
 
-      // Background akan selalu 95% dari lebar gambar, terlihat lebih konsisten
       final int bgWidth = (imageWidth * 0.95).round();
 
-      // Ukuran font sekarang proporsional dengan lebar gambar
       final int desiredFontSize = (imageWidth * 0.035).round().clamp(16, 48);
-      final font = _getBestFitFont(desiredFontSize); // Helper baru untuk memilih font terbaik
+      final font = _getBestFitFont(desiredFontSize);
 
       final now = DateTime.now();
       final timezone = _getIndonesianTimezone();
@@ -648,29 +644,23 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
 
       final List<String> textLines = [customTextLine, timestampText, locationText, sourceText];
 
-      // Menghitung tinggi background berdasarkan jumlah baris dan ukuran font
       final int padding = (font.lineHeight * 0.6).round();
       final int textSpacing = (font.lineHeight * 0.2).round();
       final int totalTextHeight = (font.lineHeight * textLines.length) + (textSpacing * (textLines.length - 1));
       final int bgHeight = totalTextHeight + (padding * 2);
-
-      // Posisi background: tengah horizontal, dan dekat dengan tepi bawah
       final int bgPosX = (imageWidth - bgWidth) ~/ 2;
-      final int bgPosY = imageHeight - bgHeight - (imageHeight * 0.02).round(); // Margin bawah 2% dari tinggi gambar
+      final int bgPosY = imageHeight - bgHeight - (imageHeight * 0.02).round();
 
-      // --- PERUBAHAN 2: Background Lebih Transparan ---
-      // Menggambar background semi-transparan (alpha 150 dari 255)
       img.fillRect(
         originalImage,
         x1: bgPosX,
         y1: bgPosY,
         x2: bgPosX + bgWidth,
         y2: bgPosY + bgHeight,
-        color: img.ColorRgba8(0, 0, 0, 150), // Nilai alpha diubah dari 200 ke 150
-        radius: 8, // Menambahkan sudut yang sedikit melengkung
+        color: img.ColorRgba8(0, 0, 0, 150),
+        radius: 8,
       );
 
-      // (Opsional) Menambahkan border tipis
       img.drawRect(
         originalImage,
         x1: bgPosX,
@@ -682,20 +672,16 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
         radius: 8,
       );
 
-
-      // --- PERUBAHAN 3: Penulisan Teks dengan Shadow untuk Keterbacaan ---
       int currentY = bgPosY + padding;
       final int textStartX = bgPosX + padding;
       final int availableTextWidth = bgWidth - (padding * 2);
 
       for (var line in textLines) {
         String displayText = line;
-        // Memotong teks jika terlalu panjang agar tidak keluar dari background
         while (_getTextWidth(displayText, font) > availableTextWidth && displayText.length > 10) {
           displayText = '${displayText.substring(0, displayText.length - 4)}...';
         }
 
-        // Shadow tipis (teks hitam di belakang)
         img.drawString(
           originalImage,
           displayText,
@@ -725,9 +711,7 @@ class FormPeriksaState extends State<FormPeriksa> with SingleTickerProviderState
     }
   }
 
-// TAMBAHKAN FUNGSI BARU INI di dalam class FormPeriksaState
   img.BitmapFont _getBestFitFont(int desiredSize) {
-    // Library 'image' hanya mendukung font bitmap, jadi kita pilih yang terdekat
     if (desiredSize >= 40) return img.arial48;
     if (desiredSize >= 20) return img.arial24;
     return img.arial14;
